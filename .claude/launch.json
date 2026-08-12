@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "splitwise-server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "packages/server"],
+      "port": 3001
+    },
+    {
+      "name": "splitwise-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "packages/web"],
+      "port": 5173,
+      "url": "http://localhost:5173"
+    }
+  ]
+}
