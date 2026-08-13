@@ -1,3 +1,10 @@
+export interface CsvMapping { date: string; desc: string; amount: string }
+export interface CsvColumnInfo {
+  headers: string[]
+  sample: string[][]
+  suggested: CsvMapping
+}
+
 export interface NubankSection {
   name: string
   total: number

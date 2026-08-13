@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { nubankParser } from '../services/parsers/nubank'
-import { csvParser } from '../services/parsers/csv'
+import { csvParser, CsvMapping } from '../services/parsers/csv'
 import { getAllSentExpenses } from '../services/db'
 import { generateId } from '../services/parsers/index'
 import { Expense } from '../types'
@@ -54,11 +54,23 @@ router.post('/pdf', upload.single('file'), async (req, res) => {
   }
 })
 
+router.post('/csv/columns', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' })
+  try {
+    res.json(await csvParser.getColumns(req.file.buffer))
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.post('/csv', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' })
 
   try {
-    const expenses = await csvParser.parse(req.file.buffer)
+    const mapping: CsvMapping | undefined = req.body.mapping ? JSON.parse(req.body.mapping) : undefined
+    const expenses = mapping
+      ? await csvParser.parseWithMapping(req.file.buffer, mapping)
+      : await csvParser.parse(req.file.buffer)
     const existing: Expense[] = [
       ...sentToExpenses(),
       ...(req.body.existing ? JSON.parse(req.body.existing) : []),
