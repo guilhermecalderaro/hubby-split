@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useNavigate } from 'react-router-dom'
 import { Expense, NubankSection, CsvColumnInfo, CsvMapping } from '../types'
@@ -164,14 +164,57 @@ function SectionPicker({ sections, active, onChange }: {
 
 // ── Preview table ───────────────────────────────────────────────────────────
 
-function PreviewTable({ expenses, selected, onToggle, onToggleAll }: {
+function parseSentId(id: string): { date: string; amount: number } | null {
+  if (!id.startsWith('sent-')) return null
+  return { date: id.slice(5, 15), amount: parseFloat(id.slice(16)) }
+}
+
+function DuplicateCompare({ expense, existing }: { expense: Expense; existing: Expense[] }) {
+  const id = expense.duplicateOf ?? ''
+  const other = existing.find(e => e.id === id)
+  const sent = parseSentId(id)
+
+  const otherDate = other?.date ?? sent?.date ?? '?'
+  const otherAmount = other?.amount ?? sent?.amount ?? 0
+  const otherDesc = other?.description || (sent ? '(enviada ao Splitwise)' : '?')
+  const otherLabel = sent ? 'Já enviada ao Splitwise' : 'Já na lista'
+
+  const card: React.CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }
+  const label: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#92400e', letterSpacing: '0.05em', marginBottom: 4 }
+
+  return (
+    <div style={{ display: 'flex', gap: 12, padding: '10px 16px', background: '#fffbeb', borderTop: '1px solid #fde68a' }}>
+      <div style={card}>
+        <div style={label}>IMPORTANDO</div>
+        <div style={{ fontWeight: 600 }}>{expense.date}</div>
+        <div style={{ color: '#374151', fontSize: 12 }}>{expense.description}</div>
+        <div>R$ {expense.amount.toFixed(2)}</div>
+      </div>
+      <div style={{ width: 1, background: '#fde68a', flexShrink: 0 }} />
+      <div style={card}>
+        <div style={label}>{otherLabel.toUpperCase()}</div>
+        <div style={{ fontWeight: 600 }}>{otherDate}</div>
+        <div style={{ color: '#374151', fontSize: 12 }}>{otherDesc}</div>
+        <div>R$ {otherAmount.toFixed(2)}</div>
+      </div>
+    </div>
+  )
+}
+
+function PreviewTable({ expenses, selected, onToggle, onToggleAll, existing }: {
   expenses: Expense[]
   selected: Set<string>
   onToggle: (id: string) => void
   onToggleAll: () => void
+  existing: Expense[]
 }) {
   const allSelected = expenses.length > 0 && expenses.every(e => selected.has(e.id))
   const someSelected = !allSelected && expenses.some(e => selected.has(e.id))
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  function toggleExpand(id: string) {
+    setExpandedId(prev => prev === id ? null : id)
+  }
 
   return (
     <div style={{ overflowX: 'auto', marginTop: 16 }}>
@@ -194,23 +237,33 @@ function PreviewTable({ expenses, selected, onToggle, onToggleAll }: {
         </thead>
         <tbody>
           {expenses.map(e => (
-            <tr
-              key={e.id}
-              onClick={() => onToggle(e.id)}
-              style={{ background: e.duplicate ? '#fff7ed' : '#fff', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
-            >
-              <td style={td} onClick={ev => ev.stopPropagation()}>
-                <input type="checkbox" checked={selected.has(e.id)} onChange={() => onToggle(e.id)} />
-              </td>
-              <td style={td}>{e.date}</td>
-              <td style={td}>{e.description}</td>
-              <td style={{ ...td, textAlign: 'right' }}>R$ {e.amount.toFixed(2)}</td>
-              <td style={td}>
-                {e.duplicate
-                  ? <span style={{ background: '#fde68a', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>Possível duplicata</span>
-                  : <span style={{ color: '#16a34a', fontSize: 11 }}>OK</span>}
-              </td>
-            </tr>
+            <React.Fragment key={e.id}>
+              <tr
+                onClick={() => onToggle(e.id)}
+                style={{ background: e.duplicate ? '#fff7ed' : '#fff', borderBottom: expandedId === e.id ? 'none' : '1px solid #f0f0f0', cursor: 'pointer' }}
+              >
+                <td style={td} onClick={ev => ev.stopPropagation()}>
+                  <input type="checkbox" checked={selected.has(e.id)} onChange={() => onToggle(e.id)} />
+                </td>
+                <td style={td}>{e.date}</td>
+                <td style={td}>{e.description}</td>
+                <td style={{ ...td, textAlign: 'right' }}>R$ {e.amount.toFixed(2)}</td>
+                <td style={td} onClick={ev => { if (e.duplicate) { ev.stopPropagation(); toggleExpand(e.id) } }}>
+                  {e.duplicate
+                    ? <span style={{ background: '#fde68a', padding: '2px 8px', borderRadius: 12, fontSize: 11, cursor: 'pointer', userSelect: 'none' }}>
+                        Possível duplicata {expandedId === e.id ? '▲' : '▼'}
+                      </span>
+                    : <span style={{ color: '#16a34a', fontSize: 11 }}>OK</span>}
+                </td>
+              </tr>
+              {e.duplicate && expandedId === e.id && (
+                <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  <td colSpan={5} style={{ padding: 0 }}>
+                    <DuplicateCompare expense={e} existing={existing} />
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
           ))}
         </tbody>
       </table>
@@ -407,7 +460,7 @@ export function Import({ onAdd, existing }: Props) {
       {preview.length > 0 && (
         <>
           <h3>Prévia — {preview.length} lançamento(s)</h3>
-          <PreviewTable expenses={preview} selected={selected} onToggle={toggleSelect} onToggleAll={toggleSelectAll} />
+          <PreviewTable expenses={preview} selected={selected} onToggle={toggleSelect} onToggleAll={toggleSelectAll} existing={existing} />
           <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
             <button onClick={confirm}
               style={{ background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 15, cursor: 'pointer' }}>
