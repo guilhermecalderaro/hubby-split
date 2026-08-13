@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.sqlite
+settings.json
+.env
+*.pdf
+*.csv
+.claude/settings.local.json
+packages/server/server_out.txt
