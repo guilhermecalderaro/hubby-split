@@ -5,6 +5,13 @@ const DB_PATH = path.join(process.cwd(), 'data.sqlite')
 const db = new DatabaseSync(DB_PATH)
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS pending_expenses (
+    id        TEXT PRIMARY KEY,
+    data      TEXT NOT NULL
+  )
+`)
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS sent_expenses (
     id           TEXT PRIMARY KEY,
     date         TEXT NOT NULL,
@@ -52,4 +59,24 @@ export function querySentExpenses(from?: string, to?: string): SentExpenseRow[] 
 
 export function getAllSentExpenses(): Pick<SentExpenseRow, 'date' | 'amount'>[] {
   return db.prepare(`SELECT date, amount FROM sent_expenses`).all() as Pick<SentExpenseRow, 'date' | 'amount'>[]
+}
+
+export function getPendingExpenses(): unknown[] {
+  return (db.prepare(`SELECT data FROM pending_expenses ORDER BY rowid`).all() as { data: string }[])
+    .map(r => JSON.parse(r.data))
+}
+
+export function upsertPendingExpenses(expenses: unknown[]): void {
+  const stmt = db.prepare(`INSERT OR REPLACE INTO pending_expenses (id, data) VALUES (?, ?)`)
+  for (const e of expenses as { id: string }[]) {
+    stmt.run(e.id, JSON.stringify(e))
+  }
+}
+
+export function deletePendingExpense(id: string): void {
+  db.prepare(`DELETE FROM pending_expenses WHERE id = ?`).run(id)
+}
+
+export function clearPendingExpenses(): void {
+  db.exec(`DELETE FROM pending_expenses`)
 }

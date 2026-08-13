@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import { Import } from './pages/Import'
 import { Expenses } from './pages/Expenses'
@@ -18,18 +18,40 @@ const link = ({ isActive }: { isActive: boolean }): React.CSSProperties => ({
 export default function App() {
   const [expenses, setExpenses] = useState<Expense[]>([])
 
+  useEffect(() => {
+    fetch('/api/pending')
+      .then(r => r.json())
+      .then((data: Expense[]) => { if (Array.isArray(data)) setExpenses(data) })
+      .catch(() => {})
+  }, [])
+
   function addExpenses(incoming: Expense[]) {
     setExpenses(prev => {
       const ids = new Set(prev.map(e => e.id))
-      return [...prev, ...incoming.filter(e => !ids.has(e.id))]
+      const next = [...prev, ...incoming.filter(e => !ids.has(e.id))]
+      fetch('/api/pending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      }).catch(() => {})
+      return next
     })
   }
 
   function updateExpense(id: string, patch: Partial<Expense>) {
-    setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))
+    setExpenses(prev => {
+      const next = prev.map(e => e.id === id ? { ...e, ...patch } : e)
+      fetch('/api/pending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      }).catch(() => {})
+      return next
+    })
   }
 
   function removeExpense(id: string) {
+    fetch(`/api/pending/${id}`, { method: 'DELETE' }).catch(() => {})
     setExpenses(prev => prev.filter(e => e.id !== id))
   }
 

@@ -164,17 +164,28 @@ function SectionPicker({ sections, active, onChange }: {
 
 // ── Preview table ───────────────────────────────────────────────────────────
 
-function PreviewTable({ expenses, selected, onToggle }: {
+function PreviewTable({ expenses, selected, onToggle, onToggleAll }: {
   expenses: Expense[]
   selected: Set<string>
   onToggle: (id: string) => void
+  onToggleAll: () => void
 }) {
+  const allSelected = expenses.length > 0 && expenses.every(e => selected.has(e.id))
+  const someSelected = !allSelected && expenses.some(e => selected.has(e.id))
+
   return (
     <div style={{ overflowX: 'auto', marginTop: 16 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ background: '#f3f4f6' }}>
-            <th style={th}>☑</th>
+            <th style={th}>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={el => { if (el) el.indeterminate = someSelected }}
+                onChange={onToggleAll}
+              />
+            </th>
             <th style={th}>Data</th>
             <th style={th}>Descrição</th>
             <th style={th}>Valor</th>
@@ -183,8 +194,14 @@ function PreviewTable({ expenses, selected, onToggle }: {
         </thead>
         <tbody>
           {expenses.map(e => (
-            <tr key={e.id} style={{ background: e.duplicate ? '#fff7ed' : '#fff', borderBottom: '1px solid #f0f0f0' }}>
-              <td style={td}><input type="checkbox" checked={selected.has(e.id)} onChange={() => onToggle(e.id)} /></td>
+            <tr
+              key={e.id}
+              onClick={() => onToggle(e.id)}
+              style={{ background: e.duplicate ? '#fff7ed' : '#fff', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
+            >
+              <td style={td} onClick={ev => ev.stopPropagation()}>
+                <input type="checkbox" checked={selected.has(e.id)} onChange={() => onToggle(e.id)} />
+              </td>
               <td style={td}>{e.date}</td>
               <td style={td}>{e.description}</td>
               <td style={{ ...td, textAlign: 'right' }}>R$ {e.amount.toFixed(2)}</td>
@@ -300,6 +317,12 @@ export function Import({ onAdd, existing }: Props) {
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   }
 
+  function toggleSelectAll() {
+    const allIds = preview.map(e => e.id)
+    const allSelected = allIds.every(id => selected.has(id))
+    setSelected(allSelected ? new Set() : new Set(allIds))
+  }
+
   function confirm() {
     onAdd(preview.filter(e => selected.has(e.id)))
     resetAll(); setPreview([])
@@ -384,7 +407,7 @@ export function Import({ onAdd, existing }: Props) {
       {preview.length > 0 && (
         <>
           <h3>Prévia — {preview.length} lançamento(s)</h3>
-          <PreviewTable expenses={preview} selected={selected} onToggle={toggleSelect} />
+          <PreviewTable expenses={preview} selected={selected} onToggle={toggleSelect} onToggleAll={toggleSelectAll} />
           <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
             <button onClick={confirm}
               style={{ background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 15, cursor: 'pointer' }}>
