@@ -1,4 +1,4 @@
-import { Group, Member, ExpenseSubmit } from '../types'
+import { Group, Member, ExpenseSubmit, SplitwiseExpenseInfo, CategoryRow } from '../types'
 import { readSettings } from './settings'
 
 const BASE = 'https://secure.splitwise.com/api/v3.0'
@@ -8,9 +8,19 @@ function headers() {
   return { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
 }
 
+async function ensureOk(res: Response) {
+  if (res.ok) return
+  let detail = ''
+  try {
+    const data = await res.json() as { errors?: Record<string, string[] | string>; error?: string }
+    detail = data.error ?? Object.values(data.errors ?? {}).flat().join(' ')
+  } catch {}
+  throw new Error(`Splitwise API error: ${res.status}${detail ? ` - ${detail}` : ''}`)
+}
+
 export async function getGroups(): Promise<Group[]> {
   const res = await fetch(`${BASE}/get_groups`, { headers: headers() })
-  if (!res.ok) throw new Error(`Splitwise API error: ${res.status}`)
+  await ensureOk(res)
   const data = await res.json() as { groups: any[] }
 
   return data.groups
@@ -24,6 +34,80 @@ export async function getGroups(): Promise<Group[]> {
         lastName: m.last_name,
       })),
     }))
+}
+
+export interface GetExpensesParams {
+  dated_after?: string
+  dated_before?: string
+  group_id?: number
+}
+
+export async function getExpenses(params: GetExpensesParams): Promise<SplitwiseExpenseInfo[]> {
+  const all: SplitwiseExpenseInfo[] = []
+  const limit = 100
+  let offset = 0
+
+  while (true) {
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (params.dated_after)  qs.set('dated_after',  params.dated_after)
+    if (params.dated_before) qs.set('dated_before', params.dated_before)
+    if (params.group_id !== undefined) qs.set('group_id', String(params.group_id))
+
+    const res = await fetch(`${BASE}/get_expenses?${qs}`, { headers: headers() })
+    await ensureOk(res)
+    const data = await res.json() as { expenses: any[] }
+
+    const raw: any[] = data.expenses ?? []
+    const page: SplitwiseExpenseInfo[] = raw
+      .filter(e => !e.deleted_at)
+      .map(e => {
+        const cost = parseFloat(e.cost ?? '0')
+        const users: any[] = e.users ?? []
+        const payer = users.find(u => parseFloat(u.paid_share ?? '0') > 0)
+        const payerName = payer
+          ? `${payer.user?.first_name ?? ''} ${payer.user?.last_name ?? ''}`.trim()
+          : ''
+        const splits = users.map(u => {
+          const owedShare = parseFloat(u.owed_share ?? '0')
+          return {
+            name: `${u.user?.first_name ?? ''} ${u.user?.last_name ?? ''}`.trim(),
+            owedShare,
+            owedPercent: cost > 0 ? Math.round((owedShare / cost) * 100) : 0,
+          }
+        })
+        return {
+          id: e.id,
+          date: (e.date ?? '').slice(0, 10),
+          description: e.description ?? '',
+          amount: cost,
+          payerName,
+          splits,
+          categoryId: e.category?.id ?? undefined,
+          categoryName: e.category?.name ?? '',
+        }
+      })
+
+    all.push(...page)
+    if (raw.length < limit) break
+    offset += limit
+  }
+
+  return all
+}
+
+export async function getCategories(): Promise<CategoryRow[]> {
+  const res = await fetch(`${BASE}/get_categories`, { headers: headers() })
+  await ensureOk(res)
+  const data = await res.json() as { categories: any[] }
+
+  const result: CategoryRow[] = []
+  for (const cat of data.categories ?? []) {
+    result.push({ id: cat.id, name: cat.name, icon_url: cat.icon ?? '', parent_id: null })
+    for (const sub of cat.subcategories ?? []) {
+      result.push({ id: sub.id, name: sub.name, icon_url: sub.icon ?? '', parent_id: cat.id })
+    }
+  }
+  return result
 }
 
 export async function createExpense(expense: ExpenseSubmit, groupName: string, payerName: string): Promise<number> {
@@ -48,6 +132,7 @@ export async function createExpense(expense: ExpenseSubmit, groupName: string, p
     currency_code: 'BRL',
     date: expense.date,
   }
+  if (expense.categoryId) body.category_id = String(expense.categoryId)
   users.forEach((u, i) => {
     body[`users__${i}__user_id`] = String(u.user_id)
     body[`users__${i}__paid_share`] = u.paid_shares
@@ -59,7 +144,7 @@ export async function createExpense(expense: ExpenseSubmit, groupName: string, p
     headers: headers(),
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`Splitwise API error: ${res.status}`)
+  await ensureOk(res)
   const data = await res.json() as { expenses?: any[]; errors?: any }
   if (data.errors && Object.keys(data.errors).length > 0) throw new Error(JSON.stringify(data.errors))
   if (!data.expenses?.length) throw new Error('No expense returned from Splitwise')

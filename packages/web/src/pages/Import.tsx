@@ -2,9 +2,13 @@ import React, { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useNavigate } from 'react-router-dom'
 import { Expense, NubankSection, CsvColumnInfo, CsvMapping } from '../types'
+import { useGroups } from '../hooks/useGroups'
+import { useCategories } from '../hooks/useCategories'
+import { SplitInput } from '../components/SplitInput'
 
 interface Props {
   onAdd: (expenses: Expense[]) => void
+  onUpdate: (id: string, patch: Partial<Expense>) => void
   existing: Expense[]
 }
 
@@ -19,7 +23,7 @@ function ColumnMapper({ info, onConfirm, onCancel }: {
   onConfirm: (mapping: CsvMapping) => void
   onCancel: () => void
 }) {
-  const [mapping, setMapping] = useState<CsvMapping>(info.suggested)
+  const [mapping, setMapping] = useState<CsvMapping>({ ...info.suggested, key: info.suggested.key ?? '' })
   const set = (field: keyof CsvMapping) => (e: React.ChangeEvent<HTMLSelectElement>) =>
     setMapping(m => ({ ...m, [field]: e.target.value }))
 
@@ -27,11 +31,12 @@ function ColumnMapper({ info, onConfirm, onCancel }: {
     { key: 'date', label: 'Data' },
     { key: 'desc', label: 'Descrição' },
     { key: 'amount', label: 'Valor' },
+    { key: 'key', label: 'Chave NF-e (opcional)' },
   ]
 
   const colIdx = (col: string) => info.headers.indexOf(col)
   const highlight = (colName: string) =>
-    Object.values(mapping).includes(colName) ? '#eef2ff' : undefined
+    colName && Object.values(mapping).includes(colName) ? '#eef2ff' : undefined
 
   return (
     <div style={{ marginTop: 24 }}>
@@ -42,7 +47,7 @@ function ColumnMapper({ info, onConfirm, onCancel }: {
           <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 180 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: '#4f46e5' }}>{label}</span>
             <select
-              value={mapping[key]}
+              value={mapping[key] ?? ''}
               onChange={set(key)}
               style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13 }}
             >
@@ -169,44 +174,151 @@ function parseSentId(id: string): { date: string; amount: number } | null {
   return { date: id.slice(5, 15), amount: parseFloat(id.slice(16)) }
 }
 
-function DuplicateCompare({ expense, existing }: { expense: Expense; existing: Expense[] }) {
+// format: splitwise-{YYYY-MM-DD}-{amount}
+function parseSplitwiseImportId(id: string): { date: string; amount: number } | null {
+  if (!id.startsWith('splitwise-')) return null
+  const rest = id.slice(10)
+  const date = rest.slice(0, 10)
+  const amount = parseFloat(rest.slice(11))
+  if (!date || isNaN(amount)) return null
+  return { date, amount }
+}
+
+// O que fazer com uma linha importada que bate com outra despesa:
+// existing = manter a que já existe (não importa), incoming = substituir pela importada,
+// merge = mesclar as duas, both = manter ambas (importa como nova)
+type Resolution = 'existing' | 'incoming' | 'merge' | 'both'
+
+// Só despesas ainda na lista (pendentes) podem ser substituídas/mescladas;
+// as já enviadas ou importadas do Splitwise só permitem ignorar ou duplicar
+function pendingMatch(expense: Expense, existing: Expense[]): Expense | undefined {
+  return expense.duplicateOf ? existing.find(e => e.id === expense.duplicateOf) : undefined
+}
+
+function defaultResolution(expense: Expense, existing: Expense[]): Resolution {
+  const other = pendingMatch(expense, existing)
+  // Caso típico: a nota fiscal traz a chave que a fatura do cartão não tem
+  if (other && expense.receiptKey && !other.receiptKey) return 'merge'
+  return 'existing'
+}
+
+function olderDate(a: string, b: string) {
+  return a && (!b || a <= b) ? a : b
+}
+
+// Mescla mantém a despesa da lista (id, grupo, divisão, nota já baixada) e completa
+// com o que a importada tem a mais — principalmente a chave da NF-e. Fica a data mais antiga.
+function mergeExpenses(other: Expense, incoming: Expense): Partial<Expense> {
+  return {
+    date: olderDate(other.date, incoming.date),
+    description: other.description || incoming.description,
+    receiptKey: other.receiptKey ?? incoming.receiptKey,
+    categoryId: other.categoryId ?? incoming.categoryId,
+  }
+}
+
+function shortKey(key?: string) {
+  return key ? `…${key.slice(-8)}` : '—'
+}
+
+function DuplicateCompare({ expense, existing, resolution, onResolve }: {
+  expense: Expense
+  existing: Expense[]
+  resolution: Resolution
+  onResolve: (r: Resolution) => void
+}) {
   const id = expense.duplicateOf ?? ''
-  const other = existing.find(e => e.id === id)
+  const other = pendingMatch(expense, existing)
   const sent = parseSentId(id)
+  const sw = parseSplitwiseImportId(id)
 
-  const otherDate = other?.date ?? sent?.date ?? '?'
-  const otherAmount = other?.amount ?? sent?.amount ?? 0
-  const otherDesc = other?.description || (sent ? '(enviada ao Splitwise)' : '?')
-  const otherLabel = sent ? 'Já enviada ao Splitwise' : 'Já na lista'
+  const otherDate = other?.date ?? sent?.date ?? sw?.date ?? '?'
+  const otherAmount = other?.amount ?? sent?.amount ?? sw?.amount ?? 0
+  const otherDesc = other?.description || (sw ? '(já no Splitwise)' : sent ? '(enviada ao Splitwise)' : '?')
+  const otherLabel = sw ? 'Já no Splitwise' : sent ? 'Já enviada ao Splitwise' : 'Já na lista'
 
-  const card: React.CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }
+  const incomingOlder = otherDate !== '?' && expense.date < otherDate
+  const otherOlder = otherDate !== '?' && otherDate < expense.date
+
+  // Destaca a(s) versão(ões) que vão sobrar depois da escolha
+  const kept = (side: 'incoming' | 'existing') =>
+    resolution === 'both' || resolution === 'merge' || resolution === side
+  const card = (side: 'incoming' | 'existing'): React.CSSProperties => ({
+    flex: 1, display: 'flex', flexDirection: 'column', gap: 2, padding: 8, borderRadius: 6,
+    border: `2px solid ${kept(side) ? '#f59e0b' : 'transparent'}`,
+    opacity: kept(side) ? 1 : 0.55,
+  })
   const label: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#92400e', letterSpacing: '0.05em', marginBottom: 4 }
+  const oldest = (
+    <span style={{ marginLeft: 6, background: '#dbeafe', color: '#1e40af', padding: '0 6px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>
+      mais antiga
+    </span>
+  )
+
+  const options: { value: Resolution; label: string; enabled: boolean }[] = [
+    { value: 'existing', label: other ? 'Manter a da lista' : 'Ignorar importada', enabled: true },
+    { value: 'incoming', label: 'Usar a importada', enabled: !!other },
+    { value: 'merge', label: 'Mesclar', enabled: !!other },
+    { value: 'both', label: 'Manter ambas', enabled: true },
+  ]
+  const merged = other && resolution === 'merge' ? mergeExpenses(other, expense) : null
 
   return (
-    <div style={{ display: 'flex', gap: 12, padding: '10px 16px', background: '#fffbeb', borderTop: '1px solid #fde68a' }}>
-      <div style={card}>
-        <div style={label}>IMPORTANDO</div>
-        <div style={{ fontWeight: 600 }}>{expense.date}</div>
-        <div style={{ color: '#374151', fontSize: 12 }}>{expense.description}</div>
-        <div>R$ {expense.amount.toFixed(2)}</div>
+    <div style={{ padding: '10px 16px', background: '#fffbeb', borderTop: '1px solid #fde68a' }}>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div style={card('incoming')}>
+          <div style={label}>IMPORTANDO</div>
+          <div style={{ fontWeight: 600 }}>{expense.date}{incomingOlder && oldest}</div>
+          <div style={{ color: '#374151', fontSize: 12 }}>{expense.description}</div>
+          <div>R$ {expense.amount.toFixed(2)}</div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>Chave NF-e: {shortKey(expense.receiptKey)}</div>
+        </div>
+        <div style={{ width: 1, background: '#fde68a', flexShrink: 0 }} />
+        <div style={card('existing')}>
+          <div style={label}>{otherLabel.toUpperCase()}</div>
+          <div style={{ fontWeight: 600 }}>{otherDate}{otherOlder && oldest}</div>
+          <div style={{ color: '#374151', fontSize: 12 }}>{otherDesc}</div>
+          <div>R$ {otherAmount.toFixed(2)}</div>
+          {other && <div style={{ fontSize: 11, color: '#6b7280' }}>Chave NF-e: {shortKey(other.receiptKey)}</div>}
+        </div>
       </div>
-      <div style={{ width: 1, background: '#fde68a', flexShrink: 0 }} />
-      <div style={card}>
-        <div style={label}>{otherLabel.toUpperCase()}</div>
-        <div style={{ fontWeight: 600 }}>{otherDate}</div>
-        <div style={{ color: '#374151', fontSize: 12 }}>{otherDesc}</div>
-        <div>R$ {otherAmount.toFixed(2)}</div>
+
+      <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        {options.filter(o => o.enabled).map(o => (
+          <button key={o.value} onClick={() => onResolve(o.value)} style={{
+            padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+            border: `1px solid ${resolution === o.value ? '#d97706' : '#e5e7eb'}`,
+            background: resolution === o.value ? '#fde68a' : '#fff',
+            fontWeight: resolution === o.value ? 600 : 400,
+          }}>
+            {o.label}
+          </button>
+        ))}
+        {merged && (
+          <span style={{ fontSize: 12, color: '#374151', marginLeft: 6 }}>
+            Resultado: {merged.date} · {merged.description} · chave {shortKey(merged.receiptKey)}
+          </span>
+        )}
       </div>
     </div>
   )
 }
 
-function PreviewTable({ expenses, selected, onToggle, onToggleAll, existing }: {
+const resolutionBadge: Record<Resolution, string> = {
+  existing: 'Duplicata · ignorar',
+  incoming: 'Duplicata · substituir',
+  merge: 'Duplicata · mesclar',
+  both: 'Duplicata · manter ambas',
+}
+
+function PreviewTable({ expenses, selected, onToggle, onToggleAll, existing, resolutions, onResolve }: {
   expenses: Expense[]
   selected: Set<string>
   onToggle: (id: string) => void
   onToggleAll: () => void
   existing: Expense[]
+  resolutions: Record<string, Resolution>
+  onResolve: (id: string, r: Resolution) => void
 }) {
   const allSelected = expenses.length > 0 && expenses.every(e => selected.has(e.id))
   const someSelected = !allSelected && expenses.some(e => selected.has(e.id))
@@ -251,7 +363,7 @@ function PreviewTable({ expenses, selected, onToggle, onToggleAll, existing }: {
                 <td style={td} onClick={ev => { if (e.duplicate) { ev.stopPropagation(); toggleExpand(e.id) } }}>
                   {e.duplicate
                     ? <span style={{ background: '#fde68a', padding: '2px 8px', borderRadius: 12, fontSize: 11, cursor: 'pointer', userSelect: 'none' }}>
-                        Possível duplicata {expandedId === e.id ? '▲' : '▼'}
+                        {resolutionBadge[resolutions[e.id] ?? 'existing']} {expandedId === e.id ? '▲' : '▼'}
                       </span>
                     : <span style={{ color: '#16a34a', fontSize: 11 }}>OK</span>}
                 </td>
@@ -259,7 +371,8 @@ function PreviewTable({ expenses, selected, onToggle, onToggleAll, existing }: {
               {e.duplicate && expandedId === e.id && (
                 <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
                   <td colSpan={5} style={{ padding: 0 }}>
-                    <DuplicateCompare expense={e} existing={existing} />
+                    <DuplicateCompare expense={e} existing={existing}
+                      resolution={resolutions[e.id] ?? 'existing'} onResolve={r => onResolve(e.id, r)} />
                   </td>
                 </tr>
               )}
@@ -276,8 +389,10 @@ const td: React.CSSProperties = { padding: '8px 12px' }
 
 // ── Main import page ────────────────────────────────────────────────────────
 
-export function Import({ onAdd, existing }: Props) {
+export function Import({ onAdd, onUpdate, existing }: Props) {
   const navigate = useNavigate()
+  const { groups } = useGroups()
+  const { parents, childrenOf } = useCategories()
 
   // PDF state
   const [sections, setSections] = useState<NubankSection[]>([])
@@ -290,18 +405,51 @@ export function Import({ onAdd, existing }: Props) {
   // Shared
   const [preview, setPreview] = useState<Expense[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [resolutions, setResolutions] = useState<Record<string, Resolution>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [manual, setManual] = useState({ date: '', description: '', amount: '' })
+
+  // Default group / payer / splits / category applied to all expenses on confirm
+  const [defaultGroupId, setDefaultGroupId] = useState<number | undefined>()
+  const [defaultPayerId, setDefaultPayerId] = useState<number | undefined>()
+  const [defaultSplits, setDefaultSplits] = useState<{ userId: number; percent: number }[] | undefined>()
+  const [defaultCategoryId, setDefaultCategoryId] = useState<number | undefined>()
+
+  const defaultGroup = groups.find(g => g.id === defaultGroupId)
+
+  function handleDefaultGroupChange(id: number | undefined) {
+    setDefaultGroupId(id)
+    setDefaultPayerId(undefined)
+    setDefaultSplits(undefined)
+    setDefaultCategoryId(undefined)
+  }
 
   function resetAll() {
     setSections([]); setCsvInfo(null); setPendingCsvFile(null); setPreview([])
   }
 
-  function applyActiveSections(sects: NubankSection[], activeNames: string[]) {
-    const expenses = sects.filter(s => activeNames.includes(s.name)).flatMap(s => s.expenses)
+  function showPreview(expenses: Expense[]) {
+    const res: Record<string, Resolution> = {}
+    for (const e of expenses) if (e.duplicate) res[e.id] = defaultResolution(e, existing)
     setPreview(expenses)
-    setSelected(new Set(expenses.filter(e => !e.duplicate).map(e => e.id)))
+    setResolutions(res)
+    setSelected(new Set(expenses.filter(e => !e.duplicate || res[e.id] !== 'existing').map(e => e.id)))
+  }
+
+  function resolve(id: string, r: Resolution) {
+    setResolutions(prev => ({ ...prev, [id]: r }))
+    setSelected(prev => { const s = new Set(prev); r === 'existing' ? s.delete(id) : s.add(id); return s })
+  }
+
+  // Marcar uma duplicata aplica a ação sugerida (ou "manter ambas"); desmarcar = ignorar
+  function activeResolution(e: Expense): Resolution {
+    const d = defaultResolution(e, existing)
+    return d === 'existing' ? 'both' : d
+  }
+
+  function applyActiveSections(sects: NubankSection[], activeNames: string[]) {
+    showPreview(sects.filter(s => activeNames.includes(s.name)).flatMap(s => s.expenses))
   }
 
   function handleSectionChange(names: string[]) {
@@ -354,8 +502,7 @@ export function Import({ onAdd, existing }: Props) {
     if (data.error) { setError(data.error); return }
     const expenses: Expense[] = data
     setCsvInfo(null)
-    setPreview(expenses)
-    setSelected(new Set(expenses.filter(e => !e.duplicate).map(e => e.id)))
+    showPreview(expenses)
   }
 
   const onDropPdf = useCallback((files: File[]) => uploadPdf(files[0]), [existing])
@@ -367,17 +514,52 @@ export function Import({ onAdd, existing }: Props) {
     useDropzone({ onDrop: onDropCsv, accept: { 'text/csv': ['.csv'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }, multiple: false })
 
   function toggleSelect(id: string) {
+    const e = preview.find(x => x.id === id)
+    if (e?.duplicate) { resolve(id, selected.has(id) ? 'existing' : activeResolution(e)); return }
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   }
 
   function toggleSelectAll() {
     const allIds = preview.map(e => e.id)
     const allSelected = allIds.every(id => selected.has(id))
+    setResolutions(prev => {
+      const next = { ...prev }
+      for (const e of preview) {
+        if (!e.duplicate) continue
+        if (allSelected) next[e.id] = 'existing'
+        else if (next[e.id] === 'existing') next[e.id] = activeResolution(e)
+      }
+      return next
+    })
     setSelected(allSelected ? new Set() : new Set(allIds))
   }
 
   function confirm() {
-    onAdd(preview.filter(e => selected.has(e.id)))
+    const toAdd: Expense[] = []
+    for (const e of preview.filter(x => selected.has(x.id))) {
+      const r = e.duplicate ? resolutions[e.id] ?? 'existing' : 'both'
+      const other = pendingMatch(e, existing)
+      if (r === 'merge' && other) {
+        onUpdate(other.id, mergeExpenses(other, e))
+      } else if (r === 'incoming' && other) {
+        // Atualiza no lugar para não perder grupo/divisão já configurados na despesa da lista
+        const keyChanged = e.receiptKey !== other.receiptKey
+        onUpdate(other.id, {
+          date: e.date, description: e.description, amount: e.amount, source: e.source,
+          receiptKey: e.receiptKey,
+          ...(keyChanged && { receipt: undefined }),
+        })
+      } else if (r !== 'existing') {
+        toAdd.push({
+          ...e,
+          ...(defaultGroupId !== undefined && { groupId: defaultGroupId }),
+          ...(defaultPayerId !== undefined && { payerId: defaultPayerId }),
+          ...(defaultSplits !== undefined && { splits: defaultSplits }),
+          ...(defaultCategoryId !== undefined && { categoryId: defaultCategoryId }),
+        })
+      }
+    }
+    onAdd(toAdd)
     resetAll(); setPreview([])
     navigate('/expenses')
   }
@@ -460,8 +642,72 @@ export function Import({ onAdd, existing }: Props) {
       {preview.length > 0 && (
         <>
           <h3>Prévia — {preview.length} lançamento(s)</h3>
-          <PreviewTable expenses={preview} selected={selected} onToggle={toggleSelect} onToggleAll={toggleSelectAll} existing={existing} />
-          <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+          <PreviewTable expenses={[...preview].sort((a, b) => b.date.localeCompare(a.date))} selected={selected} onToggle={toggleSelect} onToggleAll={toggleSelectAll} existing={existing}
+            resolutions={resolutions} onResolve={resolve} />
+
+          <div style={{ marginTop: 16, padding: '14px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+            <p style={{ margin: '0 0 12px', fontWeight: 600, fontSize: 13 }}>Configuração padrão (opcional)</p>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Grupo</span>
+                <select
+                  value={defaultGroupId ?? ''}
+                  onChange={e => handleDefaultGroupChange(e.target.value ? Number(e.target.value) : undefined)}
+                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13 }}
+                >
+                  <option value="">-- nenhum --</option>
+                  {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </label>
+
+              {defaultGroup && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>Pagante</span>
+                  <select
+                    value={defaultPayerId ?? ''}
+                    onChange={e => setDefaultPayerId(e.target.value ? Number(e.target.value) : undefined)}
+                    style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13 }}
+                  >
+                    <option value="">-- nenhum --</option>
+                    {defaultGroup.members.map(m => (
+                      <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {defaultGroup?.members && defaultGroup.members.length === 2 && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>Divisão</span>
+                  <SplitInput
+                    members={defaultGroup.members}
+                    splits={defaultSplits ?? defaultGroup.members.map(m => ({ userId: m.id, percent: 50 }))}
+                    onChange={setDefaultSplits}
+                  />
+                </label>
+              )}
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Categoria</span>
+                <select
+                  value={defaultCategoryId ?? ''}
+                  onChange={e => setDefaultCategoryId(e.target.value ? Number(e.target.value) : undefined)}
+                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, maxWidth: 200 }}
+                >
+                  <option value="">{parents.length === 0 ? '(sincronize em Histórico)' : '-- nenhuma --'}</option>
+                  {parents.map(p => (
+                    <optgroup key={p.id} label={p.name}>
+                      {childrenOf(p.id).map(sub => (
+                        <option key={sub.id} value={sub.id}>{sub.name}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, display: 'flex', gap: 12 }}>
             <button onClick={confirm}
               style={{ background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 15, cursor: 'pointer' }}>
               Adicionar {selected.size} à lista

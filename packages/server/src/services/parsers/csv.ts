@@ -1,8 +1,9 @@
 import * as XLSX from 'xlsx'
 import { ParserPlugin, generateId } from './index'
+import { normalizeAccessKey } from '../receipts'
 import { Expense } from '../../types'
 
-export interface CsvMapping { date: string; desc: string; amount: string }
+export interface CsvMapping { date: string; desc: string; amount: string; key?: string }
 export interface CsvColumnInfo {
   headers: string[]
   sample: string[][]
@@ -43,9 +44,22 @@ function suggestMapping(headers: string[]): CsvMapping {
     headers.find(h => keywords.some(k => h.toLowerCase().includes(k))) ?? ''
   return {
     date: find(['data', 'date', 'emiss', 'registro']),
-    desc: find(['descri', 'desc', 'title', 'nome', 'name', 'social', 'razão', 'razao', 'empresa', 'estabelec']),
+    desc: find(['descri', 'desc', 'title', 'nome', 'name', 'social', 'razão', 'razao', 'empresa', 'estabelec', 'emitente']),
     amount: find(['valor', 'amount', 'value', 'total', 'preço', 'preco']),
+    key: findAccessKeyColumn(headers) ?? '',
   }
+}
+
+// Exportação do Nota Fiscal Gaúcha traz a "Chave de Acesso" de cada nota
+function findAccessKeyColumn(headers: string[]): string | undefined {
+  return headers.find(h => /chave\s*de\s*acesso/i.test(h))
+    ?? headers.find(h => /chave|nf-?e|nfc-?e/i.test(h))
+}
+
+// mapping.key === '' significa "nenhuma"; ausente (cliente antigo) cai na detecção automática
+function resolveKeyColumn(headers: string[], mapping: CsvMapping): string | undefined {
+  if (mapping.key !== undefined) return mapping.key || undefined
+  return findAccessKeyColumn(headers)
 }
 
 function normalizeDate(raw: unknown): string {
@@ -120,12 +134,16 @@ export const csvParser: ParserPlugin & {
   async parseWithMapping(input: Buffer, mapping: CsvMapping): Promise<Expense[]> {
     const isXlsx = input[0] === 0x50 && input[1] === 0x4B
 
-    let records: { date: unknown; desc: unknown; amount: unknown }[]
+    let records: { date: unknown; desc: unknown; amount: unknown; key?: unknown }[]
 
     if (isXlsx) {
       // XLSX binary: use XLSX with date parsing; dates come as Date objects
-      const { rows } = rowsFromXlsx(input)
-      records = rows.map(r => ({ date: r[mapping.date], desc: r[mapping.desc], amount: r[mapping.amount] }))
+      const { headers, rows } = rowsFromXlsx(input)
+      const keyCol = resolveKeyColumn(headers, mapping)
+      records = rows.map(r => ({
+        date: r[mapping.date], desc: r[mapping.desc], amount: r[mapping.amount],
+        key: keyCol ? r[keyCol] : undefined,
+      }))
     } else {
       // Plain CSV: use raw text parser to keep all values as strings.
       // This avoids XLSX locale-specific date auto-detection (e.g. "10/08/26"
@@ -134,19 +152,23 @@ export const csvParser: ParserPlugin & {
       const di = headers.indexOf(mapping.date)
       const ri = headers.indexOf(mapping.desc)
       const ai = headers.indexOf(mapping.amount)
-      records = rows.map(r => ({ date: r[di] ?? '', desc: r[ri] ?? '', amount: r[ai] ?? '' }))
+      const keyCol = resolveKeyColumn(headers, mapping)
+      const ki = keyCol ? headers.indexOf(keyCol) : -1
+      records = rows.map(r => ({ date: r[di] ?? '', desc: r[ri] ?? '', amount: r[ai] ?? '', key: ki >= 0 ? r[ki] : undefined }))
     }
 
     return records
-      .map(({ date, desc, amount }) => {
+      .map(({ date, desc, amount, key }) => {
         const amt = normalizeAmount(amount)
         if (!amt) return null
+        const receiptKey = key ? normalizeAccessKey(String(key)) : null
         return {
           id: generateId(),
           date: normalizeDate(date),
           description: String(desc ?? '').trim(),
           amount: amt,
           source: 'csv',
+          ...(receiptKey ? { receiptKey } : {}),
         } as Expense
       })
       .filter((e): e is Expense => e !== null)

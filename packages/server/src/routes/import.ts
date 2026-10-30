@@ -2,7 +2,7 @@ import { Router } from 'express'
 import multer from 'multer'
 import { nubankParser } from '../services/parsers/nubank'
 import { csvParser, CsvMapping } from '../services/parsers/csv'
-import { getAllSentExpenses } from '../services/db'
+import { getAllSentExpenses, getAllSplitwiseImports } from '../services/db'
 import { generateId } from '../services/parsers/index'
 import { Expense } from '../types'
 
@@ -32,12 +32,23 @@ function sentToExpenses(): Expense[] {
   }))
 }
 
+// Despesas sincronizadas do Splitwise ficam disponíveis para deduplicação
+function splitwiseImportToExpenses(): Expense[] {
+  return getAllSplitwiseImports().map(r => ({
+    id: `splitwise-${r.date}-${r.amount}`,
+    date: r.date,
+    description: r.description,
+    amount: r.amount,
+  }))
+}
+
 router.post('/pdf', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' })
 
   try {
     const existing: Expense[] = [
       ...sentToExpenses(),
+      ...splitwiseImportToExpenses(),
       ...(req.body.existing ? JSON.parse(req.body.existing) : []),
     ]
 
@@ -73,6 +84,7 @@ router.post('/csv', upload.single('file'), async (req, res) => {
       : await csvParser.parse(req.file.buffer)
     const existing: Expense[] = [
       ...sentToExpenses(),
+      ...splitwiseImportToExpenses(),
       ...(req.body.existing ? JSON.parse(req.body.existing) : []),
     ]
     res.json(deduplicate(expenses, existing))
@@ -96,7 +108,7 @@ router.post('/manual', (req, res) => {
     duplicate: false,
   }
 
-  const existing: Expense[] = sentToExpenses()
+  const existing: Expense[] = [...sentToExpenses(), ...splitwiseImportToExpenses()]
   res.json(deduplicate([expense], existing)[0])
 })
 

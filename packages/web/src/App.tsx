@@ -71,8 +71,8 @@ export default function App() {
           <NavLink to="/settings" style={link}>Configurações</NavLink>
         </nav>
         <Routes>
-          <Route path="/" element={<Import onAdd={addExpenses} existing={expenses} />} />
-          <Route path="/import" element={<Import onAdd={addExpenses} existing={expenses} />} />
+          <Route path="/" element={<Import onAdd={addExpenses} onUpdate={updateExpense} existing={expenses} />} />
+          <Route path="/import" element={<Import onAdd={addExpenses} onUpdate={updateExpense} existing={expenses} />} />
           <Route path="/expenses" element={<Expenses expenses={expenses} onUpdate={updateExpense} onRemove={removeExpense} onSent={handleSent} />} />
           <Route path="/history" element={<History />} />
           <Route path="/settings" element={<Settings />} />

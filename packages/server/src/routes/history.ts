@@ -1,12 +1,13 @@
 import { Router } from 'express'
-import { querySentExpenses } from '../services/db'
+import { querySentExpenses, querySplitwiseImports } from '../services/db'
 
 const router = Router()
 
 router.get('/', (req, res) => {
   const { from, to } = req.query as { from?: string; to?: string }
-  const rows = querySentExpenses(from, to)
-  res.json(rows)
+  const sent = querySentExpenses(from, to)
+  const imported = querySplitwiseImports(from, to)
+  res.json({ sent, imported })
 })
 
 export default router
