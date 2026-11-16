@@ -42,8 +42,15 @@ export interface GetExpensesParams {
   group_id?: number
 }
 
-export async function getExpenses(params: GetExpensesParams): Promise<SplitwiseExpenseInfo[]> {
+export interface GetExpensesResult {
+  expenses: SplitwiseExpenseInfo[]
+  // Deleted expenses and payments (settle-ups): never stored, and removed if already stored
+  removedIds: number[]
+}
+
+export async function getExpenses(params: GetExpensesParams): Promise<GetExpensesResult> {
   const all: SplitwiseExpenseInfo[] = []
+  const removedIds: number[] = []
   const limit = 100
   let offset = 0
 
@@ -58,8 +65,10 @@ export async function getExpenses(params: GetExpensesParams): Promise<SplitwiseE
     const data = await res.json() as { expenses: any[] }
 
     const raw: any[] = data.expenses ?? []
+    for (const e of raw) if (e.deleted_at || e.payment) removedIds.push(e.id)
+
     const page: SplitwiseExpenseInfo[] = raw
-      .filter(e => !e.deleted_at)
+      .filter(e => !e.deleted_at && !e.payment)
       .map(e => {
         const cost = parseFloat(e.cost ?? '0')
         const users: any[] = e.users ?? []
@@ -84,6 +93,8 @@ export async function getExpenses(params: GetExpensesParams): Promise<SplitwiseE
           splits,
           categoryId: e.category?.id ?? undefined,
           categoryName: e.category?.name ?? '',
+          groupId: e.group_id ?? 0,
+          userIds: users.map(u => u.user?.id ?? u.user_id),
         }
       })
 
@@ -92,7 +103,22 @@ export async function getExpenses(params: GetExpensesParams): Promise<SplitwiseE
     offset += limit
   }
 
-  return all
+  return { expenses: all, removedIds }
+}
+
+export async function getCurrentUserId(): Promise<number> {
+  const res = await fetch(`${BASE}/get_current_user`, { headers: headers() })
+  await ensureOk(res)
+  const data = await res.json() as { user: { id: number } }
+  return data.user.id
+}
+
+// All groups the user belongs to, without filtering out "non-group expenses" (id 0)
+export async function getGroupNames(): Promise<Map<number, string>> {
+  const res = await fetch(`${BASE}/get_groups`, { headers: headers() })
+  await ensureOk(res)
+  const data = await res.json() as { groups: { id: number; name: string }[] }
+  return new Map(data.groups.map(g => [g.id, g.name]))
 }
 
 export async function getCategories(): Promise<CategoryRow[]> {

@@ -54,6 +54,7 @@ export interface Member {
 
 export interface Settings {
   apiKey: string
+  syncExcludedGroupIds: number[] // groups never pulled by the History sync (0 = non-group)
   activeGroupIds: number[]
 }
 
@@ -72,7 +73,12 @@ export interface SplitwiseExpenseInfo {
   splits: SplitwiseExpenseSplit[]
   categoryId?: number
   categoryName?: string
+  groupId: number    // 0 = non-group expense
+  userIds: number[]  // same order as splits
 }
+
+// Pseudo-group id used in settings for Splitwise's "non-group expenses"
+export const NON_GROUP_ID = 0
 
 export interface CategoryRow {
   id: number

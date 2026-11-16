@@ -43,7 +43,12 @@ npm workspaces monorepo:
 4. **Receipts / Brazilian invoices** (`services/receipts.ts`, `components/ReceiptPanel.tsx`): 44-digit access key; model 65 (NFC-e) is fetched automatically from the SEFAZ-RS portal; model 55 (NF-e) requires a gov.br login, so the user saves the page/XML and uploads it via `/api/receipts/file`.
 5. **Per-item split** (`web/src/receiptSplit.ts`): receipt items assigned to one member become separate expenses (100% to them, id `"<id>~<userId>"`); the rest is split across the group. `sentParts` allows resending only the parts that failed.
 6. **Send** (`POST /api/splitwise/expenses`): creates the expense in Splitwise (`services/splitwiseClient.ts`, API v3 with Bearer token) and records it in `sent_expenses`.
-7. **History**: `/api/splitwise/sync` pulls Splitwise expenses for a date range into `splitwise_imports`.
+7. **History**: `/api/splitwise/sync` pulls Splitwise expenses for a date range into `splitwise_imports` (upsert by Splitwise id, with `group_id`/`group_name`; `group_id` NULL = synced before groups were tracked, 0 = non-group).
+   - Splitwise's `dated_after`/`dated_before` drop edge days, so the route fetches one extra day on each side and trims locally.
+   - Payments (settle-ups) and deleted expenses are never stored; if returned, their ids are deleted locally. Rows the API no longer returns at all (no permission, e.g. a group left) are **kept** as last synced — the owner wants them preserved.
+   - Non-group expenses (`group_id` 0) store the other participants' names in `group_name` (relative to the API key's owner, from `get_current_user`). An unknown group name is stored empty and the UI shows `Grupo <id>`.
+   - `settings.syncExcludedGroupIds` (0 = non-group) are skipped by the sync and so not used for dedup; their already-stored rows are kept unless the user deletes them (`DELETE /api/history/group/:id`, offered on the Settings page after excluding a group).
+   - The History page groups synced rows by group (non-group by person) and flags those whose id matches a `sent_expenses.splitwise_id`; sent rows are listed separately only until they've been synced. Inside each list, rows get collapsible year and month header rows when they span more than one year/month (`periodBuckets`/`renderPeriod` in `History.tsx`).
 
 ## Conventions
 

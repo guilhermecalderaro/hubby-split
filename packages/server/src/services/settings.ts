@@ -7,13 +7,14 @@ const SETTINGS_PATH = path.join(process.cwd(), 'settings.json')
 const defaults: Settings = {
   apiKey: '',
   activeGroupIds: [],
+  syncExcludedGroupIds: [],
 }
 
 export function readSettings(): Settings {
   if (!fs.existsSync(SETTINGS_PATH)) return { ...defaults }
   try {
-    const { apiKey, activeGroupIds } = { ...defaults, ...JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8')) }
-    return { apiKey, activeGroupIds }
+    const { apiKey, activeGroupIds, syncExcludedGroupIds } = { ...defaults, ...JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8')) }
+    return { apiKey, activeGroupIds, syncExcludedGroupIds }
   } catch {
     return { ...defaults }
   }

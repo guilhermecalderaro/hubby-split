@@ -102,6 +102,8 @@ export interface SplitwiseImportRow {
   splits: string   // JSON string: SplitwiseExpenseSplit[]
   category_id: number | null
   category_name: string
+  group_id: number | null  // null = synced before groups were tracked; 0 = non-group expense
+  group_name: string
   imported_at: string
 }
 

@@ -37,6 +37,9 @@ try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN payer_name TEXT NOT NULL
 try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN splits TEXT NOT NULL DEFAULT '[]'`) } catch {}
 try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN category_id INTEGER`) } catch {}
 try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN category_name TEXT NOT NULL DEFAULT ''`) } catch {}
+// NULL group_id = synced before groups were tracked; 0 = non-group expense
+try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN group_id INTEGER`) } catch {}
+try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`) } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS sent_expenses (
@@ -89,19 +92,38 @@ export interface SplitwiseImportRow {
   splits: string   // JSON: SplitwiseExpenseSplit[]
   category_id: number | null
   category_name: string
+  group_id: number | null
+  group_name: string
   imported_at: string
 }
 
 export function upsertSplitwiseImports(rows: SplitwiseImportRow[]): void {
   const stmt = db.prepare(
     `INSERT OR REPLACE INTO splitwise_imports
-      (id, date, description, amount, payer_name, splits, category_id, category_name, imported_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, date, description, amount, payer_name, splits, category_id, category_name, group_id, group_name, imported_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const r of rows) {
     stmt.run(r.id, r.date, r.description, r.amount, r.payer_name, r.splits,
-      r.category_id ?? null, r.category_name, r.imported_at)
+      r.category_id ?? null, r.category_name, r.group_id ?? null, r.group_name, r.imported_at)
   }
+}
+
+// Rows stored per group (NULL group_id = synced before groups were tracked)
+export function countSplitwiseImportsByGroup(): { group_id: number | null; count: number }[] {
+  return db.prepare(`SELECT group_id, COUNT(*) AS count FROM splitwise_imports GROUP BY group_id`)
+    .all() as unknown as { group_id: number | null; count: number }[]
+}
+
+export function deleteSplitwiseImportsByGroup(groupId: number): number {
+  return Number(db.prepare(`DELETE FROM splitwise_imports WHERE group_id = ?`).run(groupId).changes)
+}
+
+export function deleteSplitwiseImports(ids: number[]): number {
+  const stmt = db.prepare(`DELETE FROM splitwise_imports WHERE id = ?`)
+  let removed = 0
+  for (const id of ids) removed += Number(stmt.run(id).changes)
+  return removed
 }
 
 export function querySplitwiseImports(from?: string, to?: string): SplitwiseImportRow[] {
