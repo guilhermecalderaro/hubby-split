@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Project name: **Hubby Split** (package `hubby-split`). The local folder may still be called `splitwise-app`.
+
 Local (personal-use) app that imports expenses from credit card statements / CSV exports, lets you review and split them, and sends them to Splitwise. The UI and user-facing messages are currently in Portuguese.
 
 ## Commands
@@ -7,7 +9,7 @@ Local (personal-use) app that imports expenses from credit card statements / CSV
 - `npm run dev` (root): starts server (port 3001) and web (port 5173) together via `concurrently`.
 - `npm run build` (root): `tsc` on the server + `tsc -b && vite build` on the web.
 - `start.cmd`: Windows launcher for end users — installs deps on first run, starts `npm run dev` in a minimized window and opens the browser.
-- Claude preview: `.claude/launch.json` defines `splitwise-server` and `splitwise-web`.
+- Claude preview: `.claude/launch.json` defines `hubby-split-server` and `hubby-split-web`.
 - No tests or linter are configured. Verification = `npm run build` + testing in the browser.
 
 ## Structure

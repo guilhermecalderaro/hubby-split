@@ -1,8 +1,10 @@
-# splitwise-app
+# Hubby Split
 
 A small local web app that turns your credit card statements and spending exports into Splitwise expenses — in bulk, with deduplication and per-item splitting.
 
 Instead of typing every shared purchase into Splitwise by hand, you import a statement, review the list, pick the group, payer and split for each expense, and send them all at once.
+
+> Not affiliated with or endorsed by Splitwise. It just uses the public Splitwise API.
 
 > **Status:** personal project, built for a Brazilian setup. The UI is in Portuguese, and some importers (Nubank PDF, receipt lookup) are Brazil-specific. The generic CSV/Excel importer works with any bank export. Contributions to make it more general are welcome.
 
@@ -28,8 +30,8 @@ Instead of typing every shared purchase into Splitwise by hand, you import a sta
 ## Setup
 
 ```bash
-git clone https://github.com/<your-user>/splitwise-app.git
-cd splitwise-app
+git clone https://github.com/<your-user>/hubby-split.git
+cd hubby-split
 npm install
 npm run dev
 ```

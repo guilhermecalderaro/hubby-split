@@ -1,5 +1,5 @@
 {
-  "name": "splitwise-app",
+  "name": "hubby-split",
   "private": true,
   "workspaces": ["packages/server", "packages/web"],
   "scripts": {

@@ -2,13 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "splitwise-server",
+      "name": "hubby-split-server",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "packages/server"],
       "port": 3001
     },
     {
-      "name": "splitwise-web",
+      "name": "hubby-split-web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "packages/web"],
       "port": 5173,

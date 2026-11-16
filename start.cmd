@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title Splitwise App
+title Hubby Split
 cd /d "%~dp0"
 
 set "APP_URL=http://localhost:5173"
@@ -30,15 +30,15 @@ if not exist "node_modules" (
   )
 )
 
-echo Iniciando Splitwise App...
-start "Splitwise App (servidor)" /min cmd /k "npm run dev"
+echo Iniciando Hubby Split...
+start "Hubby Split (servidor)" /min cmd /k "npm run dev"
 
 echo Aguardando o app ficar pronto...
 set /a tries=0
 :wait
 set /a tries+=1
 if %tries% gtr 60 (
-  echo [ERRO] O app nao respondeu em 60s. Veja a janela "Splitwise App (servidor)".
+  echo [ERRO] O app nao respondeu em 60s. Veja a janela "Hubby Split (servidor)".
   pause
   exit /b 1
 )
@@ -52,7 +52,7 @@ if errorlevel 1 if %tries% lss 60 goto wait
 echo.
 echo Frontend: %APP_URL%
 echo Backend:  http://127.0.0.1:3001
-echo Para encerrar, feche a janela "Splitwise App (servidor)".
+echo Para encerrar, feche a janela "Hubby Split (servidor)".
 start "" "%APP_URL%"
 timeout /t 3 /nobreak >nul
 exit /b 0
