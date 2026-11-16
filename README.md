@@ -25,12 +25,12 @@ Instead of typing every shared purchase into Splitwise by hand, you import a sta
 ## Requirements
 
 - [Node.js](https://nodejs.org) **22.5 or newer** (the server uses Node's built-in `node:sqlite`)
-- A Splitwise account and an API key (see below)
+- A Splitwise account and an API key (see below). Splitwise's API terms say access may require an active **Splitwise Pro** subscription; the app has only been tested with a Pro account.
 
 ## Setup
 
 ```bash
-git clone https://github.com/<your-user>/hubby-split.git
+git clone https://github.com/guilhermecalderaro/hubby-split.git
 cd hubby-split
 npm install
 npm run dev
@@ -49,6 +49,8 @@ On Windows you can also double-click `start.cmd`: it installs dependencies on th
 5. Click **Carregar grupos** (Load groups) and tick the groups you want to use.
 
 The key is a personal access token for your Splitwise account. Keep it private.
+
+Your use of the API is governed by the [Splitwise API Terms of Use](https://dev.splitwise.com/). Among other things, they don't allow commercial use without a separate agreement with Splitwise, so use this tool for your own accounts only.
 
 ## Usage
 
@@ -90,3 +92,7 @@ packages/
 ### Adding a statement parser
 
 Parsers live in `packages/server/src/services/parsers/` and return a list of `Expense` objects (`{ id, date: 'YYYY-MM-DD', description, amount }`). See `nubank.ts` for a PDF example and `csv.ts` for the column-mapping importer.
+
+## License
+
+[MIT](LICENSE) © 2026 Guilherme Calderaro
