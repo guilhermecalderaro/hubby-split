@@ -104,6 +104,7 @@ export interface SplitwiseImportRow {
   category_name: string
   group_id: number | null  // null = synced before groups were tracked; 0 = non-group expense
   group_name: string
+  currency_code: string  // '' = synced before currency was tracked
   imported_at: string
 }
 
@@ -112,4 +113,39 @@ export interface Category {
   name: string
   icon_url: string
   parent_id: number | null
+}
+
+// ── Electricity bills (RGE PDFs) ─────────────────────────────────────────────
+
+export interface FlagDays { verde: number; amarela: number; vermelha1: number; vermelha2: number }
+
+export interface ElectricityBillItem {
+  kind: 'tusd' | 'te' | 'flag' | 'adjustment' | 'cip' | 'other' | 'credit'
+  label: string
+  amount: number     // credits are negative
+}
+
+export interface ElectricityBill {
+  refMonth: string           // YYYY-MM (month the reading ends)
+  dueDate: string            // YYYY-MM-DD
+  readingFrom: string | null // YYYY-MM-DD
+  readingTo: string | null
+  days: number | null
+  kwh: number
+  total: number              // amount due
+  distributorTotal: number
+  tusdAmount: number
+  teAmount: number
+  flagCharge: number         // tariff flag surcharge (all colors)
+  cip: number                // public lighting fee
+  adjustments: number        // other positive charges
+  credits: number            // negative
+  tusdRate: number           // R$/kWh without taxes
+  tusdRateTax: number        // R$/kWh with taxes
+  teRate: number
+  teRateTax: number
+  flagDays: FlagDays
+  items: ElectricityBillItem[]
+  status: 'ok' | 'review'
+  notes: string[]
 }

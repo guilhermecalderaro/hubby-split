@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import path from 'path'
+import { ElectricityBill } from '../types'
 
 const DB_PATH = path.join(process.cwd(), 'data.sqlite')
 const db = new DatabaseSync(DB_PATH)
@@ -40,6 +41,8 @@ try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN category_name TEXT NOT N
 // NULL group_id = synced before groups were tracked; 0 = non-group expense
 try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN group_id INTEGER`) } catch {}
 try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`) } catch {}
+// '' = synced before currency was tracked
+try { db.exec(`ALTER TABLE splitwise_imports ADD COLUMN currency_code TEXT NOT NULL DEFAULT ''`) } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS sent_expenses (
@@ -94,18 +97,19 @@ export interface SplitwiseImportRow {
   category_name: string
   group_id: number | null
   group_name: string
+  currency_code: string
   imported_at: string
 }
 
 export function upsertSplitwiseImports(rows: SplitwiseImportRow[]): void {
   const stmt = db.prepare(
     `INSERT OR REPLACE INTO splitwise_imports
-      (id, date, description, amount, payer_name, splits, category_id, category_name, group_id, group_name, imported_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, date, description, amount, payer_name, splits, category_id, category_name, group_id, group_name, currency_code, imported_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const r of rows) {
     stmt.run(r.id, r.date, r.description, r.amount, r.payer_name, r.splits,
-      r.category_id ?? null, r.category_name, r.group_id ?? null, r.group_name, r.imported_at)
+      r.category_id ?? null, r.category_name, r.group_id ?? null, r.group_name, r.currency_code, r.imported_at)
   }
 }
 
@@ -201,3 +205,30 @@ export function clearPendingExpenses(): void {
 }
 
 
+
+// ── Electricity bills ────────────────────────────────────────────────────────
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS electricity_bills (
+    ref_month   TEXT PRIMARY KEY,   -- YYYY-MM; re-imports and duplicate files upsert
+    data        TEXT NOT NULL,      -- JSON: ElectricityBill
+    source_file TEXT NOT NULL DEFAULT '',
+    imported_at TEXT NOT NULL
+  )
+`)
+
+export function upsertElectricityBill(bill: ElectricityBill, sourceFile: string): void {
+  db.prepare(`INSERT OR REPLACE INTO electricity_bills (ref_month, data, source_file, imported_at) VALUES (?, ?, ?, ?)`)
+    .run(bill.refMonth, JSON.stringify(bill), sourceFile, new Date().toISOString())
+}
+
+export function queryElectricityBills(from?: string, to?: string): ElectricityBill[] {
+  const rows = (from && to
+    ? db.prepare(`SELECT data FROM electricity_bills WHERE ref_month >= ? AND ref_month <= ? ORDER BY ref_month`).all(from, to)
+    : db.prepare(`SELECT data FROM electricity_bills ORDER BY ref_month`).all()) as { data: string }[]
+  return rows.map(r => JSON.parse(r.data))
+}
+
+export function deleteElectricityBill(refMonth: string): number {
+  return Number(db.prepare(`DELETE FROM electricity_bills WHERE ref_month = ?`).run(refMonth).changes)
+}

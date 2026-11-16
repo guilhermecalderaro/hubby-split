@@ -75,6 +75,7 @@ export interface SplitwiseExpenseInfo {
   categoryName?: string
   groupId: number    // 0 = non-group expense
   userIds: number[]  // same order as splits
+  currencyCode: string
 }
 
 // Pseudo-group id used in settings for Splitwise's "non-group expenses"
@@ -85,4 +86,39 @@ export interface CategoryRow {
   name: string
   icon_url: string
   parent_id: number | null
+}
+
+// ── Electricity bills (RGE PDFs) ─────────────────────────────────────────────
+
+export interface FlagDays { verde: number; amarela: number; vermelha1: number; vermelha2: number }
+
+export interface ElectricityBillItem {
+  kind: 'tusd' | 'te' | 'flag' | 'adjustment' | 'cip' | 'other' | 'credit'
+  label: string
+  amount: number     // credits are negative
+}
+
+export interface ElectricityBill {
+  refMonth: string           // YYYY-MM (month the reading ends)
+  dueDate: string            // YYYY-MM-DD
+  readingFrom: string | null // YYYY-MM-DD
+  readingTo: string | null
+  days: number | null
+  kwh: number
+  total: number              // amount due
+  distributorTotal: number
+  tusdAmount: number
+  teAmount: number
+  flagCharge: number         // tariff flag surcharge (all colors)
+  cip: number                // public lighting fee
+  adjustments: number        // other positive charges
+  credits: number            // negative
+  tusdRate: number           // R$/kWh without taxes
+  tusdRateTax: number        // R$/kWh with taxes
+  teRate: number
+  teRateTax: number
+  flagDays: FlagDays
+  items: ElectricityBillItem[]
+  status: 'ok' | 'review'
+  notes: string[]
 }

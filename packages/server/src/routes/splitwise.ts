@@ -158,6 +158,7 @@ router.post('/sync', async (req, res) => {
       category_name: e.categoryName ?? '',
       group_id: e.groupId,
       group_name: groupName(e),
+      currency_code: e.currencyCode,
       imported_at: now,
     })))
     res.json({ count: expenses.length, removed, skipped })

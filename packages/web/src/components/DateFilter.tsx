@@ -19,11 +19,17 @@ function monthEnd(offset = 0) {
   const d = new Date(); return local(new Date(d.getFullYear(), d.getMonth() + offset + 1, 0))
 }
 
+// Earlier than any Splitwise expense (Splitwise launched in 2011)
+export const ALL_FROM = '2010-01-01'
+
 export function DateFilter({ value, onChange }: Props) {
   const presets = [
     { label: 'Mês atual',    from: monthStart(0),  to: monthEnd(0) },
     { label: 'Mês anterior', from: monthStart(-1), to: monthEnd(-1) },
     { label: 'Últimos 30d',  from: daysAgo(30),    to: today() },
+    { label: 'Últimos 12 meses', from: monthStart(-11), to: monthEnd(0) },
+    { label: 'Este ano',     from: `${new Date().getFullYear()}-01-01`, to: `${new Date().getFullYear()}-12-31` },
+    { label: 'Tudo',         from: ALL_FROM,       to: today() },
   ]
 
   return (

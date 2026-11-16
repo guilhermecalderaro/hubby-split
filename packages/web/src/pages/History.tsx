@@ -2,10 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { DateFilter } from '../components/DateFilter'
 import { SentExpense, SplitwiseExpenseSplit, SplitwiseImportRow } from '../types'
 import { useCategories } from '../hooks/useCategories'
-
-function parseSplits(raw: string): SplitwiseExpenseSplit[] {
-  try { return JSON.parse(raw) ?? [] } catch { return [] }
-}
+import { MONTHS, brl, formatDate, groupLabel, parseSplits } from '../format'
 
 function formatSplits(splits: SplitwiseExpenseSplit[]): string {
   return splits.map(s => `${s.name} ${s.owedPercent}%`).join(' · ')
@@ -20,9 +17,7 @@ function groupRows(rows: SplitwiseImportRow[]): GroupBucket[] {
     const key = r.group_id == null ? 'unknown'
       : r.group_id === 0 ? `0:${r.group_name}`
       : String(r.group_id)
-    const name = r.group_id == null ? 'Grupo não identificado'
-      : r.group_id === 0 ? (r.group_name ? `Sem grupo · com ${r.group_name}` : 'Sem grupo')
-      : r.group_name || `Grupo ${r.group_id}`
+    const name = groupLabel(r)
     const b = map.get(key) ?? { key, name, rows: [], total: 0 }
     b.rows.push(r)
     b.total += r.amount
@@ -35,9 +30,6 @@ function groupRows(rows: SplitwiseImportRow[]): GroupBucket[] {
 
 interface MonthBucket<T> { key: string; label: string; rows: T[]; total: number }
 interface YearBucket<T> { year: string; months: MonthBucket<T>[]; total: number; count: number }
-
-const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
 /** Splits rows (newest first) into years and months; headers are shown only when there is more than one. */
 function periodBuckets<T extends { date: string; amount: number }>(rows: T[]) {
@@ -61,9 +53,6 @@ function periodBuckets<T extends { date: string; amount: number }>(rows: T[]) {
     showMonth: list.reduce((n, y) => n + y.months.length, 0) > 1,
   }
 }
-
-const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const formatDate = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 
 function today() { return new Date().toISOString().slice(0, 10) }
 function monthStart() { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10) }

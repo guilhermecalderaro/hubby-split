@@ -95,6 +95,7 @@ export async function getExpenses(params: GetExpensesParams): Promise<GetExpense
           categoryName: e.category?.name ?? '',
           groupId: e.group_id ?? 0,
           userIds: users.map(u => u.user?.id ?? u.user_id),
+          currencyCode: e.currency_code ?? '',
         }
       })
 

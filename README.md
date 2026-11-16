@@ -57,6 +57,8 @@ Your use of the API is governed by the [Splitwise API Terms of Use](https://dev.
 1. **Importar (Import):** upload a statement PDF or a CSV/Excel file, or add an expense manually. Review the preview, resolve duplicates, choose default group/payer/split, and add the rows to the pending list.
 2. **Despesas (Expenses):** adjust each expense (group, payer, split, category, receipt items) and send the selected ones to Splitwise.
 3. **Histórico (History):** see what was sent, and sync expenses from Splitwise for a date range so future imports can detect duplicates.
+4. **Dashboard:** charts of the synced expenses — spending per category over time (as a timeline or with years overlaid), monthly totals, category ranking, spending per group and who paid. Switch between the expense total and one person's share.
+5. **Conta de luz (optional, RGE customers only):** in the Dashboard, import your RGE electricity bills as PDFs (download them from the RGE website or app). You get consumption in kWh/day, the price per kWh over time and what each bill is made of, including tariff flags (bandeiras). Re-importing a month just updates it.
 
 ## Data and privacy
 

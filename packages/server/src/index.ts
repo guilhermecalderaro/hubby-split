@@ -6,6 +6,7 @@ import historyRouter from './routes/history'
 import importRouter from './routes/import'
 import pendingRouter from './routes/pending'
 import receiptsRouter from './routes/receipts'
+import electricityRouter from './routes/electricity'
 
 const app = express()
 const PORT = 3001
@@ -21,6 +22,7 @@ app.use('/api/history', historyRouter)
 app.use('/api/import', importRouter)
 app.use('/api/pending', pendingRouter)
 app.use('/api/receipts', receiptsRouter)
+app.use('/api/electricity', electricityRouter)
 
 app.listen(PORT, HOST, () => {
   console.log(`Server running at http://${HOST}:${PORT}`)

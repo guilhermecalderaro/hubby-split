@@ -4,6 +4,7 @@ import { Import } from './pages/Import'
 import { Expenses } from './pages/Expenses'
 import { History } from './pages/History'
 import { Settings } from './pages/Settings'
+import { Dashboard } from './pages/Dashboard'
 import { Expense, SendResult } from './types'
 
 const nav: React.CSSProperties = {
@@ -85,6 +86,7 @@ export default function App() {
             Despesas {expenses.length > 0 && <span style={{ background: '#818cf8', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 11, marginLeft: 4 }}>{expenses.length}</span>}
           </NavLink>
           <NavLink to="/history" style={link}>Histórico</NavLink>
+          <NavLink to="/dashboard" style={link}>Dashboard</NavLink>
           <NavLink to="/settings" style={link}>Configurações</NavLink>
         </nav>
         <Routes>
@@ -92,6 +94,7 @@ export default function App() {
           <Route path="/import" element={<Import onAdd={addExpenses} onUpdate={updateExpense} existing={expenses} />} />
           <Route path="/expenses" element={<Expenses expenses={expenses} onUpdate={updateExpense} onSplit={splitExpense} onRemove={removeExpense} onSent={handleSent} />} />
           <Route path="/history" element={<History />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </div>
