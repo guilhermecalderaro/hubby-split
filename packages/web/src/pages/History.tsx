@@ -89,7 +89,7 @@ export function History() {
     <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
       <h2>Histórico</h2>
 
-      {/* ── Buscar no Splitwise ─────────────────────────────────── */}
+      {/* ── Fetch from Splitwise ───────────────────────────────── */}
       <div style={{
         background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10,
         padding: '16px 20px', marginBottom: 24,
@@ -145,14 +145,14 @@ export function History() {
         </p>
       </div>
 
-      {/* ── Filtro de período ───────────────────────────────────── */}
+      {/* ── Date range filter ───────────────────────────────────── */}
       <DateFilter value={dateRange} onChange={setDateRange} />
 
       {loading && <p>Carregando...</p>}
 
       {!loading && (
         <>
-          {/* ── Despesas enviadas por este app ──────────────────── */}
+          {/* ── Expenses sent by this app ──────────────────────── */}
           <h3 style={{ marginTop: 20, marginBottom: 6, fontSize: 15 }}>
             Enviadas por este app — {sent.length} despesa(s) · R$ {sentTotal.toFixed(2)}
           </h3>
@@ -200,7 +200,7 @@ export function History() {
             </table>
           </div>
 
-          {/* ── Despesas importadas do Splitwise ───────────────── */}
+          {/* ── Expenses imported from Splitwise ───────────────── */}
           <h3 style={{ marginBottom: 6, fontSize: 15 }}>
             Importadas do Splitwise — {imported.length} despesa(s) · R$ {importedTotal.toFixed(2)}
           </h3>

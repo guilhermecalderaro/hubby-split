@@ -24,9 +24,9 @@ export interface Expense {
   payerId?: number
   splits?: { userId: number; percent: number }[]
   categoryId?: number
-  receiptKey?: string    // chave de acesso NF-e/NFC-e (44 dígitos)
+  receiptKey?: string    // NF-e/NFC-e access key (44 digits)
   receipt?: Receipt
-  sentParts?: string[]   // ids das partes (compartilhada/exclusivas) já enviadas
+  sentParts?: string[]   // ids of parts (shared/exclusive) already sent
 }
 
 export interface ReceiptItem {
@@ -37,8 +37,8 @@ export interface ReceiptItem {
   unitPrice: number
   total: number
   discount: number
-  amount: number      // valor líquido
-  assignee?: number   // userId de quem paga sozinho; vazio = dividido no grupo
+  amount: number      // net amount
+  assignee?: number   // userId of the member who pays alone; empty = split across the group
 }
 
 export interface Receipt {

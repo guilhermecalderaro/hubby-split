@@ -50,13 +50,13 @@ function suggestMapping(headers: string[]): CsvMapping {
   }
 }
 
-// Exportação do Nota Fiscal Gaúcha traz a "Chave de Acesso" de cada nota
+// The "Nota Fiscal Gaúcha" export includes each receipt's "Chave de Acesso" (access key)
 function findAccessKeyColumn(headers: string[]): string | undefined {
   return headers.find(h => /chave\s*de\s*acesso/i.test(h))
     ?? headers.find(h => /chave|nf-?e|nfc-?e/i.test(h))
 }
 
-// mapping.key === '' significa "nenhuma"; ausente (cliente antigo) cai na detecção automática
+// mapping.key === '' means "none"; missing (older client) falls back to auto-detection
 function resolveKeyColumn(headers: string[], mapping: CsvMapping): string | undefined {
   if (mapping.key !== undefined) return mapping.key || undefined
   return findAccessKeyColumn(headers)

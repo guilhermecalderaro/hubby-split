@@ -184,20 +184,20 @@ function parseSplitwiseImportId(id: string): { date: string; amount: number } | 
   return { date, amount }
 }
 
-// O que fazer com uma linha importada que bate com outra despesa:
-// existing = manter a que já existe (não importa), incoming = substituir pela importada,
-// merge = mesclar as duas, both = manter ambas (importa como nova)
+// What to do with an imported row that matches another expense:
+// existing = keep the existing one (skip import), incoming = replace with the imported one,
+// merge = merge both, both = keep both (import as new)
 type Resolution = 'existing' | 'incoming' | 'merge' | 'both'
 
-// Só despesas ainda na lista (pendentes) podem ser substituídas/mescladas;
-// as já enviadas ou importadas do Splitwise só permitem ignorar ou duplicar
+// Only expenses still in the list (pending) can be replaced/merged;
+// ones already sent or imported from Splitwise can only be skipped or duplicated
 function pendingMatch(expense: Expense, existing: Expense[]): Expense | undefined {
   return expense.duplicateOf ? existing.find(e => e.id === expense.duplicateOf) : undefined
 }
 
 function defaultResolution(expense: Expense, existing: Expense[]): Resolution {
   const other = pendingMatch(expense, existing)
-  // Caso típico: a nota fiscal traz a chave que a fatura do cartão não tem
+  // Typical case: the receipt has the access key the card statement lacks
   if (other && expense.receiptKey && !other.receiptKey) return 'merge'
   return 'existing'
 }
@@ -206,8 +206,8 @@ function olderDate(a: string, b: string) {
   return a && (!b || a <= b) ? a : b
 }
 
-// Mescla mantém a despesa da lista (id, grupo, divisão, nota já baixada) e completa
-// com o que a importada tem a mais — principalmente a chave da NF-e. Fica a data mais antiga.
+// Merge keeps the listed expense (id, group, split, fetched receipt) and fills in
+// what the imported one adds — mainly the NF-e access key. The oldest date wins.
 function mergeExpenses(other: Expense, incoming: Expense): Partial<Expense> {
   return {
     date: olderDate(other.date, incoming.date),
@@ -240,7 +240,7 @@ function DuplicateCompare({ expense, existing, resolution, onResolve }: {
   const incomingOlder = otherDate !== '?' && expense.date < otherDate
   const otherOlder = otherDate !== '?' && otherDate < expense.date
 
-  // Destaca a(s) versão(ões) que vão sobrar depois da escolha
+  // Highlights the version(s) that will remain after the choice
   const kept = (side: 'incoming' | 'existing') =>
     resolution === 'both' || resolution === 'merge' || resolution === side
   const card = (side: 'incoming' | 'existing'): React.CSSProperties => ({
@@ -442,7 +442,7 @@ export function Import({ onAdd, onUpdate, existing }: Props) {
     setSelected(prev => { const s = new Set(prev); r === 'existing' ? s.delete(id) : s.add(id); return s })
   }
 
-  // Marcar uma duplicata aplica a ação sugerida (ou "manter ambas"); desmarcar = ignorar
+  // Checking a duplicate applies the suggested action (or "keep both"); unchecking = skip
   function activeResolution(e: Expense): Resolution {
     const d = defaultResolution(e, existing)
     return d === 'existing' ? 'both' : d
@@ -542,7 +542,7 @@ export function Import({ onAdd, onUpdate, existing }: Props) {
       if (r === 'merge' && other) {
         onUpdate(other.id, mergeExpenses(other, e))
       } else if (r === 'incoming' && other) {
-        // Atualiza no lugar para não perder grupo/divisão já configurados na despesa da lista
+        // Update in place so the group/split already set on the listed expense is kept
         const keyChanged = e.receiptKey !== other.receiptKey
         onUpdate(other.id, {
           date: e.date, description: e.description, amount: e.amount, source: e.source,

@@ -7,7 +7,7 @@ export interface Expense {
   duplicate?: boolean
   duplicateOf?: string
   categoryId?: number
-  receiptKey?: string // chave de acesso NF-e/NFC-e (44 dígitos)
+  receiptKey?: string // NF-e/NFC-e access key (44 digits)
 }
 
 export interface ReceiptItem {
@@ -16,9 +16,9 @@ export interface ReceiptItem {
   quantity: number
   unit: string
   unitPrice: number
-  total: number    // valor bruto do item
-  discount: number // desconto atribuído ao item na nota
-  amount: number   // valor líquido, já com descontos/acréscimos rateados
+  total: number    // gross item amount
+  discount: number // discount assigned to the item on the receipt
+  amount: number   // net amount, with discounts/surcharges already prorated
 }
 
 export interface Receipt {
@@ -54,8 +54,6 @@ export interface Member {
 
 export interface Settings {
   apiKey: string
-  consumerKey: string
-  consumerSecret: string
   activeGroupIds: number[]
 }
 

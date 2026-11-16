@@ -10,6 +10,7 @@ import { buildParts, exclusiveTotals, partsError, SendPart } from '../receiptSpl
 interface Props {
   expenses: Expense[]
   onUpdate: (id: string, patch: Partial<Expense>) => void
+  onSplit: (id: string, patch: Partial<Expense>, extracted: Expense) => void
   onRemove: (id: string) => void
   onSent: (results: SendResult[]) => void
 }
@@ -44,7 +45,7 @@ interface HistoryMatch {
   splits?: SplitwiseExpenseSplit[]
 }
 
-export function Expenses({ expenses, onUpdate, onRemove, onSent }: Props) {
+export function Expenses({ expenses, onUpdate, onSplit, onRemove, onSent }: Props) {
   const { groups } = useGroups()
   const { parents, childrenOf } = useCategories()
   const [checked, setChecked] = useState<Set<string>>(new Set())
@@ -111,7 +112,7 @@ export function Expenses({ expenses, onUpdate, onRemove, onSent }: Props) {
 
     setSending(new Set(ids))
 
-    // Itens exclusivos da nota viram despesas separadas
+    // Receipt items assigned to a single member become separate expenses
     const partsByExpense = new Map<string, SendPart[]>(toSend.map(e => [e.id, buildParts(
       { ...e, groupId: e.groupId!, payerId: e.payerId!, splits: e.splits ?? defaultSplits(e.groupId!) },
       groups.find(g => g.id === e.groupId)?.members ?? [],
@@ -214,7 +215,7 @@ export function Expenses({ expenses, onUpdate, onRemove, onSent }: Props) {
                     </td>
                     <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>R$ {e.amount.toFixed(2)}</td>
                     <td style={td}>
-                      <select value={e.groupId ?? ''} onChange={ev => onUpdate(e.id, { groupId: Number(ev.target.value), splits: undefined })}
+                      <select value={e.groupId ?? ''} onChange={ev => onUpdate(e.id, { groupId: ev.target.value ? Number(ev.target.value) : undefined, payerId: undefined, splits: undefined })}
                         style={{ padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 13 }}>
                         <option value="">-- grupo --</option>
                         {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
@@ -296,7 +297,8 @@ export function Expenses({ expenses, onUpdate, onRemove, onSent }: Props) {
                   {receiptOpen && (
                     <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
                       <td colSpan={10} style={{ padding: 0 }}>
-                        <ReceiptPanel expense={e} group={group} onUpdate={patch => onUpdate(e.id, patch)} />
+                        <ReceiptPanel expense={e} group={group} onUpdate={patch => onUpdate(e.id, patch)}
+                          onSplit={(patch, extracted) => onSplit(e.id, patch, extracted)} />
                       </td>
                     </tr>
                   )}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 
 export function Settings() {
-  const [form, setForm] = useState({ apiKey: '', consumerKey: '', consumerSecret: '' })
+  const [form, setForm] = useState({ apiKey: '' })
+  const [hasKey, setHasKey] = useState(false)
   const [groups, setGroups] = useState<{ id: number; name: string }[]>([])
   const [activeIds, setActiveIds] = useState<number[]>([])
   const [status, setStatus] = useState('')
@@ -9,6 +10,7 @@ export function Settings() {
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(s => {
       setActiveIds(s.activeGroupIds ?? [])
+      setHasKey(!!s.apiKey)
     })
   }, [])
 
@@ -21,6 +23,8 @@ export function Settings() {
     })
     const data = await res.json()
     if (!data.ok) { setStatus('Erro ao salvar.'); return }
+    if (form.apiKey.trim()) setHasKey(true)
+    setForm({ apiKey: '' })
 
     // Fetch groups with new key
     const gr = await fetch('/api/splitwise/groups').then(r => r.json())
@@ -45,20 +49,18 @@ export function Settings() {
 
       <section style={{ marginBottom: 24 }}>
         <h3>Splitwise API</h3>
-        {(['apiKey', 'consumerKey', 'consumerSecret'] as const).map(key => (
-          <div key={key} style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', fontSize: 13, color: '#555', marginBottom: 4 }}>
-              {key === 'apiKey' ? 'API Key' : key === 'consumerKey' ? 'Consumer Key' : 'Consumer Secret'}
-            </label>
-            <input
-              type="password"
-              value={form[key]}
-              placeholder={key === 'apiKey' ? 'Deixe em branco para manter' : ''}
-              onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #d1d5db', boxSizing: 'border-box' }}
-            />
-          </div>
-        ))}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 13, color: '#555', marginBottom: 4 }}>
+            API Key {hasKey && <span style={{ color: '#16a34a' }}>(configurada)</span>}
+          </label>
+          <input
+            type="password"
+            value={form.apiKey}
+            placeholder={hasKey ? 'Deixe em branco para manter' : ''}
+            onChange={e => setForm({ apiKey: e.target.value })}
+            style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #d1d5db', boxSizing: 'border-box' }}
+          />
+        </div>
       </section>
 
       <section style={{ marginBottom: 24 }}>

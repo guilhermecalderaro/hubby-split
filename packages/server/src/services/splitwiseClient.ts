@@ -118,7 +118,7 @@ export async function createExpense(expense: ExpenseSubmit, groupName: string, p
     owed_shares: ((total * s.percent) / 100).toFixed(2),
   }))
 
-  // Ajuste de centavos: distribuir resto no primeiro usuário
+  // Cent adjustment: give the remainder to the first user
   const owedSum = users.reduce((acc, u) => acc + parseFloat(u.owed_shares), 0)
   const diff = parseFloat((total - owedSum).toFixed(2))
   if (diff !== 0) {

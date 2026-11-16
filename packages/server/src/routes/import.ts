@@ -32,7 +32,7 @@ function sentToExpenses(): Expense[] {
   }))
 }
 
-// Despesas sincronizadas do Splitwise ficam disponíveis para deduplicação
+// Expenses synced from Splitwise are also used for deduplication
 function splitwiseImportToExpenses(): Expense[] {
   return getAllSplitwiseImports().map(r => ({
     id: `splitwise-${r.date}-${r.amount}`,

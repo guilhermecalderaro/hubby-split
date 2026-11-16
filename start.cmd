@@ -46,12 +46,12 @@ timeout /t 1 /nobreak >nul
 curl -s -o nul "%APP_URL%" >nul 2>&1
 if errorlevel 1 goto wait
 
-curl -s -o nul "http://localhost:3001" >nul 2>&1
+curl -s -o nul "http://127.0.0.1:3001" >nul 2>&1
 if errorlevel 1 if %tries% lss 60 goto wait
 
 echo.
 echo Frontend: %APP_URL%
-echo Backend:  http://localhost:3001
+echo Backend:  http://127.0.0.1:3001
 echo Para encerrar, feche a janela "Splitwise App (servidor)".
 start "" "%APP_URL%"
 timeout /t 3 /nobreak >nul

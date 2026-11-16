@@ -6,17 +6,21 @@ interface Props {
   expense: Expense
   group?: Group
   onUpdate: (patch: Partial<Expense>) => void
+  onSplit: (patch: Partial<Expense>, extracted: Expense) => void
 }
 
 const brl = (n: number) => `R$ ${n.toFixed(2)}`
+const round2 = (n: number) => Math.round(n * 100) / 100
 
-export function ReceiptPanel({ expense, group, onUpdate }: Props) {
+export function ReceiptPanel({ expense, group, onUpdate, onSplit }: Props) {
   const [key, setKey] = useState(expense.receiptKey ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [portalUrl, setPortalUrl] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState<number>()
 
   const receipt = expense.receipt
   const cleanKey = key.replace(/\D/g, '')
@@ -60,15 +64,66 @@ export function ReceiptPanel({ expense, group, onUpdate }: Props) {
     }
   }
 
-  // Ao abrir: NFC-e traz os itens direto; NF-e devolve o link do portal para salvar a página
+  // On open: NFC-e returns the items directly; NF-e returns the portal link so the user can save the page
   useEffect(() => {
     if (!receipt && cleanKey.length === 44) fetchItems()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The panel must match the visible width of the horizontally scrolling area; if wider,
+  // sticky hits the end of the cell and the panel gets clipped on the left when scrolled to the end
+  useEffect(() => {
+    let scroller = panelRef.current?.parentElement ?? null
+    while (scroller && !['auto', 'scroll'].includes(getComputedStyle(scroller).overflowX)) scroller = scroller.parentElement
+    if (!scroller) return
+    const el = scroller
+    const observer = new ResizeObserver(() => setWidth(el.clientWidth))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   function assign(indexes: number[], assignee: number | undefined) {
     if (!receipt) return
     const items = receipt.items.map((item, i) => (indexes.includes(i) ? { ...item, assignee } : item))
     onUpdate({ receipt: { ...receipt, items } })
+  }
+
+  // Moves these items out of this expense into a new one right below it, so it can be renamed.
+  // assignee set = only that member pays (100%); empty = same split as the original.
+  function separate(indexes: number[], assignee?: number) {
+    if (!receipt || !indexes.length) return
+    const moved = receipt.items.filter((_, i) => indexes.includes(i)).map(item => ({ ...item, assignee: undefined }))
+    const kept = receipt.items.filter((_, i) => !indexes.includes(i))
+    const amount = round2(moved.reduce((sum, item) => sum + item.amount, 0))
+    const remaining = round2(expense.amount - amount)
+    if (remaining <= 0) {
+      setError('Os itens selecionados somam o valor todo da despesa; não sobra nada para separar.')
+      return
+    }
+
+    const names = [...new Set(moved.map(item => item.description))]
+    onSplit(
+      {
+        amount: remaining,
+        receipt: { ...receipt, total: round2(receipt.total - amount), items: kept },
+      },
+      {
+        id: `${expense.id}-${Date.now().toString(36)}`,
+        date: expense.date,
+        description: `${expense.description} - ${names.join(', ')}`,
+        amount,
+        source: expense.source,
+        groupId: expense.groupId,
+        payerId: expense.payerId,
+        splits: assignee != null && group
+          ? group.members.map(m => ({ userId: m.id, percent: m.id === assignee ? 100 : 0 }))
+          : expense.splits,
+        categoryId: expense.categoryId,
+        receiptKey: expense.receiptKey,
+        receipt: { ...receipt, total: amount, items: moved },
+      },
+    )
+    setSelected(new Set())
+    setError(null)
   }
 
   function toggleSelected(i: number) {
@@ -80,8 +135,8 @@ export function ReceiptPanel({ expense, group, onUpdate }: Props) {
   const td: React.CSSProperties = { padding: '3px 8px', fontSize: 12 }
 
   return (
-    // sticky: a tabela de despesas rola na horizontal; o painel fica fixo na área visível
-    <div style={{ position: 'sticky', left: 0, maxWidth: 'calc(100vw - 48px)', boxSizing: 'border-box',
+    // sticky: the expenses table scrolls horizontally; the panel stays fixed in the visible area
+    <div ref={panelRef} style={{ position: 'sticky', left: 0, width, maxWidth: width ?? 'calc(100vw - 48px)', boxSizing: 'border-box',
       padding: '12px 16px', background: '#f5f7ff', borderTop: '1px solid #c7d2fe' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', letterSpacing: '0.05em' }}>NOTA FISCAL</span>
@@ -124,18 +179,20 @@ export function ReceiptPanel({ expense, group, onUpdate }: Props) {
             )}
           </div>
 
-          {!group && <div style={{ marginTop: 6, fontSize: 12, color: '#b45309' }}>Escolha o grupo da despesa para marcar itens exclusivos.</div>}
-
-          {group && !locked && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, fontSize: 12 }}>
+          {!locked && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, fontSize: 12, flexWrap: 'wrap' }}>
               <span>{selected.size} selecionado(s) →</span>
-              <button style={btn} disabled={!selected.size} onClick={() => { assign([...selected], undefined); setSelected(new Set()) }}>Dividir</button>
-              {group.members.map(m => (
-                <button key={m.id} style={btn} disabled={!selected.size}
-                  onClick={() => { assign([...selected], m.id); setSelected(new Set()) }}>
-                  Só {m.firstName}
+              <button style={btn} disabled={!selected.size} onClick={() => separate([...selected])}
+                title="Cria uma despesa separada com esses itens, com a mesma divisão">
+                Separar
+              </button>
+              {group?.members.map(m => (
+                <button key={m.id} style={btn} disabled={!selected.size} onClick={() => separate([...selected], m.id)}
+                  title={`Cria uma despesa separada com esses itens, 100% para ${m.firstName}`}>
+                  Separar só {m.firstName}
                 </button>
               ))}
+              {!group && <span style={{ color: '#b45309' }}>Escolha o grupo da despesa para separar itens só de um membro.</span>}
             </div>
           )}
 
@@ -143,7 +200,7 @@ export function ReceiptPanel({ expense, group, onUpdate }: Props) {
             <thead>
               <tr style={{ background: '#eef2ff', textAlign: 'left' }}>
                 <th style={td}>
-                  <input type="checkbox" disabled={!group || locked}
+                  <input type="checkbox" disabled={locked}
                     checked={selected.size === receipt.items.length}
                     onChange={() => setSelected(prev => prev.size === receipt.items.length ? new Set() : new Set(receipt.items.map((_, i) => i)))} />
                 </th>
@@ -157,7 +214,7 @@ export function ReceiptPanel({ expense, group, onUpdate }: Props) {
               {receipt.items.map((item, i) => (
                 <tr key={i} style={{ borderTop: '1px solid #f0f0f0', background: item.assignee != null ? '#fefce8' : undefined }}>
                   <td style={td}>
-                    <input type="checkbox" disabled={!group || locked} checked={selected.has(i)} onChange={() => toggleSelected(i)} />
+                    <input type="checkbox" disabled={locked} checked={selected.has(i)} onChange={() => toggleSelected(i)} />
                   </td>
                   <td style={td}>{item.description}</td>
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', color: '#6b7280' }}>
@@ -171,7 +228,7 @@ export function ReceiptPanel({ expense, group, onUpdate }: Props) {
                   </td>
                   <td style={td}>
                     <select value={item.assignee ?? ''} disabled={!group || locked}
-                      onChange={ev => assign([i], ev.target.value ? Number(ev.target.value) : undefined)}
+                      onChange={ev => ev.target.value ? separate([i], Number(ev.target.value)) : assign([i], undefined)}
                       style={{ padding: '2px 6px', border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 12 }}>
                       <option value="">Dividir no grupo</option>
                       {group?.members.map(m => <option key={m.id} value={m.id}>Só {m.firstName}</option>)}

@@ -7,3 +7,4 @@ settings.json
 *.csv
 .claude/settings.local.json
 packages/server/server_out.txt
+*.tsbuildinfo

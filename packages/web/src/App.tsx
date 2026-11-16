@@ -50,6 +50,23 @@ export default function App() {
     })
   }
 
+  // Updates the original expense and inserts the extracted part right below it
+  function splitExpense(id: string, patch: Partial<Expense>, extracted: Expense) {
+    setExpenses(prev => {
+      const i = prev.findIndex(e => e.id === id)
+      if (i < 0) return prev
+      const next = [...prev]
+      next[i] = { ...prev[i], ...patch }
+      next.splice(i + 1, 0, extracted)
+      fetch('/api/pending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      }).catch(() => {})
+      return next
+    })
+  }
+
   function removeExpense(id: string) {
     fetch(`/api/pending/${id}`, { method: 'DELETE' }).catch(() => {})
     setExpenses(prev => prev.filter(e => e.id !== id))
@@ -73,7 +90,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Import onAdd={addExpenses} onUpdate={updateExpense} existing={expenses} />} />
           <Route path="/import" element={<Import onAdd={addExpenses} onUpdate={updateExpense} existing={expenses} />} />
-          <Route path="/expenses" element={<Expenses expenses={expenses} onUpdate={updateExpense} onRemove={removeExpense} onSent={handleSent} />} />
+          <Route path="/expenses" element={<Expenses expenses={expenses} onUpdate={updateExpense} onSplit={splitExpense} onRemove={removeExpense} onSent={handleSent} />} />
           <Route path="/history" element={<History />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>

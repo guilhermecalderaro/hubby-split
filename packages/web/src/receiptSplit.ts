@@ -13,7 +13,7 @@ export interface SendPart {
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
-/** Soma dos itens exclusivos de cada membro (userId → valor). */
+/** Sum of each member's exclusive items (userId → amount). */
 export function exclusiveTotals(expense: Expense): Map<number, number> {
   const totals = new Map<number, number>()
   for (const item of expense.receipt?.items ?? []) {
@@ -23,7 +23,7 @@ export function exclusiveTotals(expense: Expense): Map<number, number> {
   return totals
 }
 
-/** Valor que fica para dividir no grupo: total da despesa menos os itens exclusivos. */
+/** Amount left to split across the group: expense total minus exclusive items. */
 export function sharedAmount(expense: Expense): number {
   const exclusive = [...exclusiveTotals(expense).values()].reduce((a, b) => a + b, 0)
   return round2(expense.amount - exclusive)
@@ -40,9 +40,9 @@ export function partsError(expense: Expense): string | null {
 }
 
 /**
- * Quebra uma despesa em: uma parte dividida no grupo (mantém o id original)
- * e uma despesa separada por membro com itens exclusivos (100% para ele).
- * Partes já enviadas (sentParts) são omitidas, permitindo reenvio após falha parcial.
+ * Splits an expense into: one part shared across the group (keeps the original id)
+ * and a separate expense per member with exclusive items (100% to them).
+ * Parts already sent (sentParts) are skipped, allowing a resend after a partial failure.
  */
 export function buildParts(
   expense: Expense & { groupId: number; payerId: number; splits: SendPart['splits'] },
@@ -63,7 +63,7 @@ export function buildParts(
   }
 
   for (const [userId, amount] of exclusive) {
-    // Itens exclusivos do próprio pagante não geram dívida: só saem da parte dividida
+    // The payer's own exclusive items create no debt: they are just removed from the shared part
     if (userId === expense.payerId) continue
     const name = members.find(m => m.id === userId)?.firstName ?? String(userId)
     parts.push({

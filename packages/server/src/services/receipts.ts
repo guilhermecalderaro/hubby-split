@@ -2,12 +2,12 @@ import { Receipt, ReceiptItem } from '../types'
 
 const NFCE_URL = 'https://www.sefaz.rs.gov.br/ASP/AAE_ROOT/NFE/SAT-WEB-NFE-NFC_2.asp'
 
-// Consulta NF-e exige login gov.br + reCAPTCHA; o usuário baixa o XML por aqui
+// NF-e lookup requires a gov.br login + reCAPTCHA; the user downloads the XML from here
 export function nfePortalUrl(accessKey: string): string {
   return `https://www.sefaz.rs.gov.br/NFE/NFE-COM.aspx?HML=false&chaveNFe=${accessKey}`
 }
 
-// Consulta pública da NFC-e no navegador (alternativa manual se a automática falhar)
+// Public NFC-e lookup in the browser (manual fallback if the automatic one fails)
 export function nfcePortalUrl(accessKey: string): string {
   return `https://www.sefaz.rs.gov.br/NFE/NFE-NFC.aspx?chaveNFe=${accessKey}`
 }
@@ -19,7 +19,7 @@ export function normalizeAccessKey(raw: string): string | null {
   return digits.length === 44 ? digits : null
 }
 
-// Posições 21-22 da chave de acesso: 55 = NF-e, 65 = NFC-e
+// Access key positions 21-22: 55 = NF-e, 65 = NFC-e
 export function receiptModel(accessKey: string): string {
   return accessKey.slice(20, 22)
 }
@@ -46,8 +46,8 @@ function cellText(html: string): string {
 }
 
 /**
- * Ajusta o valor líquido de cada item para que a soma bata com o total pago,
- * distribuindo descontos/acréscimos não atribuídos a itens proporcionalmente.
+ * Adjusts each item's net amount so the sum matches the total paid,
+ * spreading discounts/surcharges not tied to specific items proportionally.
  */
 function allocateNet(items: Omit<ReceiptItem, 'amount'>[], netTotal: number): ReceiptItem[] {
   const base = items.map(i => i.total - i.discount)
@@ -58,7 +58,7 @@ function allocateNet(items: Omit<ReceiptItem, 'amount'>[], netTotal: number): Re
     amount: round2(base[idx] + (baseSum > 0 ? extra * (base[idx] / baseSum) : 0)),
   }))
 
-  // Centavos de arredondamento vão para o maior item
+  // Rounding cents go to the largest item
   const diff = round2(netTotal - result.reduce((a, i) => a + i.amount, 0))
   if (diff !== 0 && result.length > 0) {
     const largest = result.reduce((max, i) => (i.amount > max.amount ? i : max), result[0])
@@ -112,9 +112,9 @@ export async function fetchNfce(accessKey: string): Promise<Receipt> {
     body: new URLSearchParams({ HML: 'false', chaveNFe: accessKey }).toString(),
   })
   if (!res.ok) throw new Error(`Consulta SEFAZ-RS falhou: ${res.status}`)
-  // Página servida em ISO-8859-1
+  // Page is served as ISO-8859-1
   const html = new TextDecoder('latin1').decode(await res.arrayBuffer())
-  // Hoje a consulta NFC-e não pede captcha; se a SEFAZ passar a exigir, cai no fluxo manual
+  // The NFC-e lookup currently has no captcha; if SEFAZ starts requiring one, fall back to the manual flow
   if (!/id="Item \+ \d+"/.test(html) && /captcha/i.test(html)) {
     throw new ManualLookupRequired('A SEFAZ pediu verificação (captcha) para esta consulta. Abra a nota no portal, salve a página (Ctrl+S) e envie aqui.')
   }
@@ -128,7 +128,7 @@ function xmlTag(xml: string, tag: string): string | null {
 
 const xmlNum = (xml: string, tag: string) => parseFloat(xmlTag(xml, tag) ?? '0') || 0
 
-// XML padrão nacional (nfeProc/NFe), serve para NF-e (55) e NFC-e (65)
+// National standard XML (nfeProc/NFe), works for both NF-e (55) and NFC-e (65)
 export function parseNfeXml(xml: string): Receipt {
   const infNFe = xml.match(/<(?:\w+:)?infNFe[^>]*\bId="NFe(\d{44})"/)
   if (!infNFe) throw new Error('Arquivo não parece ser um XML de NF-e/NFC-e.')
@@ -167,7 +167,7 @@ function labeledValue(html: string, label: string): string | null {
   return m ? cellText(m[1]) : null
 }
 
-// Página "Consulta Pública" do portal DFe (logado com gov.br), salva com Ctrl+S
+// DFe portal "Consulta Pública" page (logged in with gov.br), saved with Ctrl+S
 export function parseNfePortalHtml(html: string): Receipt {
   const keyMatch = cellText(html.match(/Dados da NF-e:([\s\S]*?)<\//)?.[1] ?? '').replace(/\D/g, '')
   const accessKey = normalizeAccessKey(keyMatch)
@@ -205,7 +205,7 @@ export function parseNfePortalHtml(html: string): Receipt {
   }
 }
 
-// Aceita XML da nota, página do portal DFe salva, ou página da consulta NFC-e salva
+// Accepts the receipt XML, a saved DFe portal page, or a saved NFC-e lookup page
 export function parseReceiptFile(buffer: Buffer): Receipt {
   let text = buffer.toString('utf8')
   if (text.includes('\uFFFD')) text = new TextDecoder('latin1').decode(buffer)
